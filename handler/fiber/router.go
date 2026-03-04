@@ -1,15 +1,15 @@
-package handler
+package fiberhandler
 
 import (
-	"pt_search_hos/middleware"
+	fibermw "pt_search_hos/middleware/fiber"
 
 	"github.com/gofiber/fiber/v2"
 )
 
 func SetupRoutes(app *fiber.App, staff *StaffHandler, patient *PatientHandler, jwtSecret string, isBlacklisted func(string) bool) {
-	auth      := middleware.JWTProtected(jwtSecret, isBlacklisted)
-	authLimit := middleware.AuthRateLimit() // 10 req/min — brute-force protection
-	apiLimit  := middleware.APIRateLimit()  // 100 req/min — general API protection
+	auth      := fibermw.JWTProtected(jwtSecret, isBlacklisted)
+	authLimit := fibermw.AuthRateLimit() // 10 req/min — brute-force protection
+	apiLimit  := fibermw.APIRateLimit()  // 100 req/min — general API protection
 
 	// System
 	app.Get("/hello", HelloHandler)

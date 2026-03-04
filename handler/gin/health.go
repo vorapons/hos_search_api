@@ -1,14 +1,15 @@
-package handler
+package ginhandler
 
 import (
+	"net/http"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gin-gonic/gin"
 )
 
 // HelloHandler handles GET /hello
-func HelloHandler(c *fiber.Ctx) error {
-	return c.JSON(fiber.Map{
+func HelloHandler(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
 		"status":    "ok",
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	})

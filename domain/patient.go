@@ -5,8 +5,8 @@ import (
 )
 
 type Patient struct {
-	ID           string     `json:"id"`
-	HospitalID   string     `json:"hospital_id"`
+	ID           string     `json:"-"`
+	HospitalID   string     `json:"-"`
 	FirstNameTH  *string    `json:"first_name_th"`
 	MiddleNameTH *string    `json:"middle_name_th"`
 	LastNameTH   *string    `json:"last_name_th"`

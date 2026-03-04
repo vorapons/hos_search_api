@@ -1,20 +1,18 @@
 package main
 
 import (
-	"context"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"pt_search_hos/config"
-	ginhandler "pt_search_hos/handler/gin"
+	fiberhandler "pt_search_hos/handler/fiber"
 	"pt_search_hos/repository"
 	"pt_search_hos/services"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/joho/godotenv"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -44,23 +42,18 @@ func main() {
 		log.Printf("warning: could not load token blacklist: %v", err)
 	}
 
-	staffH   := ginhandler.NewStaffHandler(staffSvc)
-	patientH := ginhandler.NewPatientHandler(patientSvc)
+	staffH   := fiberhandler.NewStaffHandler(staffSvc)
+	patientH := fiberhandler.NewPatientHandler(patientSvc)
 
-	// Gin
-	r := gin.New()
-	r.Use(gin.Logger(), gin.Recovery())
-	ginhandler.SetupRoutes(r, staffH, patientH, cfg.JWTSecret, staffSvc.IsTokenBlacklisted)
-
-	srv := &http.Server{
-		Addr:    ":" + cfg.AppPort,
-		Handler: r,
-	}
+	// Fiber
+	app := fiber.New()
+	app.Use(logger.New())
+	fiberhandler.SetupRoutes(app, staffH, patientH, cfg.JWTSecret, staffSvc.IsTokenBlacklisted)
 
 	// Start server in background
 	go func() {
-		log.Printf("gin server starting on :%s", cfg.AppPort)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Printf("fiber server starting on :%s", cfg.AppPort)
+		if err := app.Listen(":" + cfg.AppPort); err != nil {
 			log.Fatalf("server error: %v", err)
 		}
 	}()
@@ -70,12 +63,9 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Println("shutting down gin server...")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	if err := srv.Shutdown(ctx); err != nil {
+	log.Println("shutting down fiber server...")
+	if err := app.Shutdown(); err != nil {
 		log.Fatalf("shutdown error: %v", err)
 	}
-	log.Println("gin server stopped")
+	log.Println("fiber server stopped")
 }

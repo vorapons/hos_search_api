@@ -1,15 +1,16 @@
-package handler_test
+package ginhandler_test
 
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"pt_search_hos/domain"
-	"pt_search_hos/handler"
+	ginhandler "pt_search_hos/handler/gin"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -35,12 +36,19 @@ func (m *mockPatientService) GetPatientByCondition(input domain.PatientSearchInp
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-func setupPatientApp(staffSvc domain.StaffService, patientSvc domain.PatientService) *fiber.App {
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
-	staffH := handler.NewStaffHandler(staffSvc)
-	patientH := handler.NewPatientHandler(patientSvc)
-	handler.SetupRoutes(app, staffH, patientH, testJWTSecret, staffSvc.IsTokenBlacklisted)
-	return app
+func setupPatientRouter(staffSvc domain.StaffService, patientSvc domain.PatientService) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	staffH   := ginhandler.NewStaffHandler(staffSvc)
+	patientH := ginhandler.NewPatientHandler(patientSvc)
+	ginhandler.SetupRoutes(r, staffH, patientH, testJWTSecret, staffSvc.IsTokenBlacklisted)
+	return r
+}
+
+func performReq(r *gin.Engine, req *http.Request) *httptest.ResponseRecorder {
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	return w
 }
 
 // makePatientToken generates a JWT with hospital_id set to hospitalID.
@@ -70,7 +78,7 @@ func strPtr(s string) *string { return &s }
 // ── GET /patient/search/:id ───────────────────────────────────────────────────
 
 func TestGetByID_FoundByNationalID(t *testing.T) {
-	staffSvc := new(mockStaffService)
+	staffSvc   := new(mockStaffService)
 	patientSvc := new(mockPatientService)
 
 	tok := makePatientToken("BKH01")
@@ -81,17 +89,17 @@ func TestGetByID_FoundByNationalID(t *testing.T) {
 	req, _ := http.NewRequest(http.MethodGet, "/patient/search/1234567890123", nil)
 	req.Header.Set("Authorization", "Bearer "+tok)
 
-	resp, _ := setupPatientApp(staffSvc, patientSvc).Test(req)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	w := performReq(setupPatientRouter(staffSvc, patientSvc), req)
+	assert.Equal(t, http.StatusOK, w.Code)
 
 	var body map[string]any
-	json.NewDecoder(resp.Body).Decode(&body)
-	assert.Equal(t, "uuid-1", body["id"])
+	json.NewDecoder(w.Body).Decode(&body)
+	assert.Equal(t, "1234567890123", body["national_id"])
 	patientSvc.AssertExpectations(t)
 }
 
 func TestGetByID_NotFound(t *testing.T) {
-	staffSvc := new(mockStaffService)
+	staffSvc   := new(mockStaffService)
 	patientSvc := new(mockPatientService)
 
 	tok := makePatientToken("BKH01")
@@ -101,26 +109,26 @@ func TestGetByID_NotFound(t *testing.T) {
 	req, _ := http.NewRequest(http.MethodGet, "/patient/search/unknown", nil)
 	req.Header.Set("Authorization", "Bearer "+tok)
 
-	resp, _ := setupPatientApp(staffSvc, patientSvc).Test(req)
-	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+	w := performReq(setupPatientRouter(staffSvc, patientSvc), req)
+	assert.Equal(t, http.StatusNotFound, w.Code)
 
 	var body map[string]string
-	json.NewDecoder(resp.Body).Decode(&body)
+	json.NewDecoder(w.Body).Decode(&body)
 	assert.Equal(t, "NOT_FOUND", body["code"])
 }
 
 func TestGetByID_NoAuthHeader(t *testing.T) {
-	staffSvc := new(mockStaffService)
+	staffSvc   := new(mockStaffService)
 	patientSvc := new(mockPatientService)
 
 	req, _ := http.NewRequest(http.MethodGet, "/patient/search/1234567890123", nil)
 
-	resp, _ := setupPatientApp(staffSvc, patientSvc).Test(req)
-	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	w := performReq(setupPatientRouter(staffSvc, patientSvc), req)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
 func TestGetByID_InternalError(t *testing.T) {
-	staffSvc := new(mockStaffService)
+	staffSvc   := new(mockStaffService)
 	patientSvc := new(mockPatientService)
 
 	tok := makePatientToken("BKH01")
@@ -130,20 +138,20 @@ func TestGetByID_InternalError(t *testing.T) {
 	req, _ := http.NewRequest(http.MethodGet, "/patient/search/1234567890123", nil)
 	req.Header.Set("Authorization", "Bearer "+tok)
 
-	resp, _ := setupPatientApp(staffSvc, patientSvc).Test(req)
-	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	w := performReq(setupPatientRouter(staffSvc, patientSvc), req)
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
 // ── POST /patient/search ──────────────────────────────────────────────────────
 
 func TestSearch_Success(t *testing.T) {
-	staffSvc := new(mockStaffService)
+	staffSvc   := new(mockStaffService)
 	patientSvc := new(mockPatientService)
 
 	tok := makePatientToken("BKH01")
 	staffSvc.On("IsTokenBlacklisted", tok).Return(false)
 
-	input := domain.PatientSearchInput{LastName: strPtr("Smith")}
+	input   := domain.PatientSearchInput{LastName: strPtr("Smith")}
 	patients := []domain.Patient{{ID: "uuid-1"}, {ID: "uuid-2"}}
 	patientSvc.On("GetPatientByCondition", input, "BKH01").Return(patients, nil)
 
@@ -152,17 +160,17 @@ func TestSearch_Success(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+tok)
 
-	resp, _ := setupPatientApp(staffSvc, patientSvc).Test(req)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	w := performReq(setupPatientRouter(staffSvc, patientSvc), req)
+	assert.Equal(t, http.StatusOK, w.Code)
 
 	var body []map[string]any
-	json.NewDecoder(resp.Body).Decode(&body)
+	json.NewDecoder(w.Body).Decode(&body)
 	assert.Len(t, body, 2)
 	patientSvc.AssertExpectations(t)
 }
 
 func TestSearch_EmptyResult(t *testing.T) {
-	staffSvc := new(mockStaffService)
+	staffSvc   := new(mockStaffService)
 	patientSvc := new(mockPatientService)
 
 	tok := makePatientToken("BKH01")
@@ -176,16 +184,16 @@ func TestSearch_EmptyResult(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+tok)
 
-	resp, _ := setupPatientApp(staffSvc, patientSvc).Test(req)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	w := performReq(setupPatientRouter(staffSvc, patientSvc), req)
+	assert.Equal(t, http.StatusOK, w.Code)
 
 	var body []any
-	json.NewDecoder(resp.Body).Decode(&body)
+	json.NewDecoder(w.Body).Decode(&body)
 	assert.Empty(t, body)
 }
 
 func TestSearch_NoCondition(t *testing.T) {
-	staffSvc := new(mockStaffService)
+	staffSvc   := new(mockStaffService)
 	patientSvc := new(mockPatientService)
 
 	tok := makePatientToken("BKH01")
@@ -198,16 +206,16 @@ func TestSearch_NoCondition(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+tok)
 
-	resp, _ := setupPatientApp(staffSvc, patientSvc).Test(req)
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	w := performReq(setupPatientRouter(staffSvc, patientSvc), req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 
 	var body map[string]string
-	json.NewDecoder(resp.Body).Decode(&body)
+	json.NewDecoder(w.Body).Decode(&body)
 	assert.Equal(t, "INVALID_INPUT", body["code"])
 }
 
 func TestSearch_BadBody(t *testing.T) {
-	staffSvc := new(mockStaffService)
+	staffSvc   := new(mockStaffService)
 	patientSvc := new(mockPatientService)
 
 	tok := makePatientToken("BKH01")
@@ -218,26 +226,25 @@ func TestSearch_BadBody(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+tok)
 
-	resp, _ := setupPatientApp(staffSvc, patientSvc).Test(req)
-	// Fiber's BodyParser is lenient for primitive JSON — service will get empty input
-	// which triggers ErrInvalidInput; either 400 is acceptable
-	assert.True(t, resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusOK)
+	w := performReq(setupPatientRouter(staffSvc, patientSvc), req)
+	// Gin's ShouldBindJSON strictly requires a JSON object — always 400
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestSearch_NoAuthHeader(t *testing.T) {
-	staffSvc := new(mockStaffService)
+	staffSvc   := new(mockStaffService)
 	patientSvc := new(mockPatientService)
 
 	req, _ := http.NewRequest(http.MethodPost, "/patient/search",
 		jsonBody(map[string]string{"last_name": "Smith"}))
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, _ := setupPatientApp(staffSvc, patientSvc).Test(req)
-	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	w := performReq(setupPatientRouter(staffSvc, patientSvc), req)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
 func TestSearch_InternalError(t *testing.T) {
-	staffSvc := new(mockStaffService)
+	staffSvc   := new(mockStaffService)
 	patientSvc := new(mockPatientService)
 
 	tok := makePatientToken("BKH01")
@@ -249,6 +256,6 @@ func TestSearch_InternalError(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+tok)
 
-	resp, _ := setupPatientApp(staffSvc, patientSvc).Test(req)
-	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	w := performReq(setupPatientRouter(staffSvc, patientSvc), req)
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }

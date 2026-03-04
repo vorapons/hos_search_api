@@ -1,4 +1,4 @@
-package handler_test
+package fiberhandler_test
 
 import (
 	"bytes"
@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"pt_search_hos/domain"
-	"pt_search_hos/handler"
+	fiberhandler "pt_search_hos/handler/fiber"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
@@ -50,9 +50,9 @@ func (m *mockStaffService) LoadBlacklist() error {
 
 func setupApp(svc domain.StaffService) *fiber.App {
 	app := fiber.New(fiber.Config{DisableStartupMessage: true})
-	staffH := handler.NewStaffHandler(svc)
-	patientH := handler.NewPatientHandler(nil)
-	handler.SetupRoutes(app, staffH, patientH, testJWTSecret, svc.IsTokenBlacklisted)
+	staffH   := fiberhandler.NewStaffHandler(svc)
+	patientH := fiberhandler.NewPatientHandler(nil)
+	fiberhandler.SetupRoutes(app, staffH, patientH, testJWTSecret, svc.IsTokenBlacklisted)
 	return app
 }
 

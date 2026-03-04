@@ -1,11 +1,12 @@
-package handler
+package ginhandler
 
 import (
 	"errors"
+	"net/http"
 
 	"pt_search_hos/domain"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gin-gonic/gin"
 )
 
 type PatientHandler struct {
@@ -18,61 +19,66 @@ func NewPatientHandler(s domain.PatientService) *PatientHandler {
 
 // GetByID handles GET /patient/search/:id
 // The :id can be either a national_id or passport_id.
-func (h *PatientHandler) GetByID(c *fiber.Ctx) error {
-	id := c.Params("id")
-	hospitalID, _ := c.Locals("hospital_id").(string)
+func (h *PatientHandler) GetByID(c *gin.Context) {
+	id := c.Param("id")
+	hospitalIDRaw, _ := c.Get("hospital_id")
+	hospitalID, _ := hospitalIDRaw.(string)
 
 	patient, err := h.service.GetPatientByID(id, hospitalID)
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrNotFound):
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			c.JSON(http.StatusNotFound, gin.H{
 				"code":    "NOT_FOUND",
 				"message": "Patient not found",
 			})
 		case errors.Is(err, domain.ErrInvalidInput):
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			c.JSON(http.StatusBadRequest, gin.H{
 				"code":    "INVALID_INPUT",
 				"message": "Patient ID is required",
 			})
 		default:
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			c.JSON(http.StatusInternalServerError, gin.H{
 				"code":    "INTERNAL_ERROR",
 				"message": "An unexpected error occurred",
 			})
 		}
+		return
 	}
 
-	return c.JSON(patient)
+	c.JSON(http.StatusOK, patient)
 }
 
 // Search handles POST /patient/search
-func (h *PatientHandler) Search(c *fiber.Ctx) error {
+func (h *PatientHandler) Search(c *gin.Context) {
 	var input domain.PatientSearchInput
-	if err := c.BodyParser(&input); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
 			"code":    "INVALID_INPUT",
 			"message": "Invalid request body",
 		})
+		return
 	}
 
-	hospitalID, _ := c.Locals("hospital_id").(string)
+	hospitalIDRaw, _ := c.Get("hospital_id")
+	hospitalID, _ := hospitalIDRaw.(string)
 
 	patients, err := h.service.GetPatientByCondition(input, hospitalID)
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrInvalidInput):
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			c.JSON(http.StatusBadRequest, gin.H{
 				"code":    "INVALID_INPUT",
 				"message": "At least one search condition is required",
 			})
 		default:
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			c.JSON(http.StatusInternalServerError, gin.H{
 				"code":    "INTERNAL_ERROR",
 				"message": "An unexpected error occurred",
 			})
 		}
+		return
 	}
 
-	return c.JSON(patients)
+	c.JSON(http.StatusOK, patients)
 }
