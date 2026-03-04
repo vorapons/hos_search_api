@@ -2,6 +2,8 @@ package repository
 
 import (
 	"errors"
+	"time"
+
 	"pt_search_hos/domain"
 
 	"gorm.io/gorm"
@@ -55,4 +57,20 @@ func (r *staffRepository) FindHospitalByName(name string) (*domain.Hospital, err
 		ID:   m.ID,
 		Name: m.Name,
 	}, nil
+}
+
+func (r *staffRepository) AddBlacklistedToken(token string, expiresAt time.Time) error {
+	return r.db.Create(&BlacklistedTokenModel{Token: token, ExpiresAt: expiresAt}).Error
+}
+
+func (r *staffRepository) LoadBlacklistedTokens() ([]string, error) {
+	var models []BlacklistedTokenModel
+	if err := r.db.Where("expires_at > ?", time.Now()).Find(&models).Error; err != nil {
+		return nil, err
+	}
+	tokens := make([]string, len(models))
+	for i, m := range models {
+		tokens[i] = m.Token
+	}
+	return tokens, nil
 }

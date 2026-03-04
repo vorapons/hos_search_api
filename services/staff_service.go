@@ -1,6 +1,7 @@
 package services
 
 import (
+	"errors"
 	"regexp"
 	"sync"
 	"time"
@@ -92,8 +93,6 @@ func (s *staffService) CreateStaff(email, password, hospitalName string) (string
 		return "", domain.ErrInvalidInput
 	}
 
-
-
 	existing, err := s.repo.FindByEmail(email)
 	if err != nil {
 		return "", err
@@ -130,6 +129,16 @@ func (s *staffService) CreateStaff(email, password, hospitalName string) (string
 }
 
 func (s *staffService) Logout(tokenString string) error {
+	expiresAt, err := s.tokenExpiry(tokenString)
+	if err != nil {
+		// If we can't parse the expiry, use 24h as safe default
+		expiresAt = time.Now().Add(24 * time.Hour)
+	}
+
+	if err := s.repo.AddBlacklistedToken(tokenString, expiresAt); err != nil {
+		return err
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.blacklist[tokenString] = struct{}{}
@@ -141,6 +150,21 @@ func (s *staffService) IsTokenBlacklisted(tokenString string) bool {
 	defer s.mu.RUnlock()
 	_, ok := s.blacklist[tokenString]
 	return ok
+}
+
+// LoadBlacklist loads all non-expired blacklisted tokens from the DB into memory.
+// Call this once on server startup.
+func (s *staffService) LoadBlacklist() error {
+	tokens, err := s.repo.LoadBlacklistedTokens()
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, t := range tokens {
+		s.blacklist[t] = struct{}{}
+	}
+	return nil
 }
 
 func (s *staffService) generateToken(staff *domain.Staff) (string, error) {
@@ -155,4 +179,18 @@ func (s *staffService) generateToken(staff *domain.Staff) (string, error) {
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(s.jwtSecret))
+}
+
+func (s *staffService) tokenExpiry(tokenString string) (time.Time, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &staffClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return []byte(s.jwtSecret), nil
+	})
+	if err != nil {
+		return time.Time{}, err
+	}
+	claims, ok := token.Claims.(*staffClaims)
+	if !ok || claims.ExpiresAt == nil {
+		return time.Time{}, errors.New("invalid claims")
+	}
+	return claims.ExpiresAt.Time, nil
 }

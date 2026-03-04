@@ -36,6 +36,11 @@ func main() {
 	staffSvc := services.NewStaffService(staffRepo, cfg.JWTSecret)
 	patientSvc := services.NewPatientService(patientRepo)
 
+	// Load persisted token blacklist from DB
+	if err := staffSvc.LoadBlacklist(); err != nil {
+		log.Printf("warning: could not load token blacklist: %v", err)
+	}
+
 	staffH := handler.NewStaffHandler(staffSvc)
 	patientH := handler.NewPatientHandler(patientSvc)
 

@@ -28,3 +28,11 @@ type StaffModel struct {
 }
 
 func (StaffModel) TableName() string { return "staff" }
+
+type BlacklistedTokenModel struct {
+	Token     string    `gorm:"primaryKey"`
+	ExpiresAt time.Time `gorm:"not null"`
+	CreatedAt time.Time
+}
+
+func (BlacklistedTokenModel) TableName() string { return "blacklisted_tokens" }

@@ -1,5 +1,7 @@
 package domain
 
+import "time"
+
 // Hospital is a lightweight representation used across services.
 type Hospital struct {
 	ID   string
@@ -20,6 +22,8 @@ type StaffRepository interface {
 	FindByEmail(email string) (*Staff, error)
 	Create(staff *Staff) error
 	FindHospitalByName(name string) (*Hospital, error)
+	AddBlacklistedToken(token string, expiresAt time.Time) error
+	LoadBlacklistedTokens() ([]string, error)
 }
 
 // StaffService is the port (interface) for the use-case layer.
@@ -28,6 +32,7 @@ type StaffService interface {
 	CreateStaff(email, password, hospitalName string) (token string, err error)
 	Logout(token string) error
 	IsTokenBlacklisted(token string) bool
+	LoadBlacklist() error
 }
 
 // TokenClaims holds the data embedded in the JWT.
