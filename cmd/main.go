@@ -12,6 +12,7 @@ import (
 	"pt_search_hos/services"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/joho/godotenv"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -46,6 +47,7 @@ func main() {
 
 	// Fiber
 	app := fiber.New()
+	app.Use(logger.New())
 	handler.SetupRoutes(app, staffH, patientH, cfg.JWTSecret, staffSvc.IsTokenBlacklisted)
 
 	// Start server in background
