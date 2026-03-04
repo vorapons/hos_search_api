@@ -4,7 +4,6 @@ import (
 	"errors"
 	"pt_search_hos/domain"
 
-	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -36,12 +35,9 @@ func (r *staffRepository) FindByEmail(email string) (*domain.Staff, error) {
 
 func (r *staffRepository) Create(staff *domain.Staff) error {
 	m := StaffModel{
-		ID:         uuid.New().String(),
 		HospitalID: staff.HospitalID,
 		Email:      staff.Email,
 		Password:   staff.Password,
-		NameEN:     staff.NameEN,
-		NameTH:     staff.NameTH,
 	}
 	return r.db.Create(&m).Error
 }

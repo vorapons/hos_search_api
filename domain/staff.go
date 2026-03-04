@@ -8,13 +8,11 @@ type Hospital struct {
 
 // Staff represents an authenticated hospital staff member.
 type Staff struct {
-	ID           string
+	ID           uint
 	HospitalID   string
 	HospitalName string
 	Email        string
 	Password     string  // bcrypt hash, never serialised
-	NameEN       *string // DB requires at least one of NameEN / NameTH
-	NameTH       *string
 }
 
 // StaffRepository is the port (interface) for the database adapter.

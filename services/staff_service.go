@@ -1,15 +1,43 @@
 package services
 
 import (
-	"strings"
+	"regexp"
 	"sync"
 	"time"
+	"unicode"
 
 	"pt_search_hos/domain"
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
+
+var emailRegex = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
+
+func isValidEmail(email string) bool {
+	return emailRegex.MatchString(email)
+}
+
+// isStrongPassword requires: min 8 chars, at least 1 uppercase, 1 lowercase, 1 digit, 1 special char.
+func isStrongPassword(pw string) bool {
+	if len(pw) < 8 {
+		return false
+	}
+	var hasUpper, hasLower, hasDigit, hasSpecial bool
+	for _, r := range pw {
+		switch {
+		case unicode.IsUpper(r):
+			hasUpper = true
+		case unicode.IsLower(r):
+			hasLower = true
+		case unicode.IsDigit(r):
+			hasDigit = true
+		case unicode.IsPunct(r) || unicode.IsSymbol(r):
+			hasSpecial = true
+		}
+	}
+	return hasUpper && hasLower && hasDigit && hasSpecial
+}
 
 type staffClaims struct {
 	Login      string `json:"login"`
@@ -57,6 +85,14 @@ func (s *staffService) CreateStaff(email, password, hospitalName string) (string
 	if email == "" || password == "" || hospitalName == "" {
 		return "", domain.ErrInvalidInput
 	}
+	if !isValidEmail(email) {
+		return "", domain.ErrInvalidInput
+	}
+	if !isStrongPassword(password) {
+		return "", domain.ErrInvalidInput
+	}
+
+
 
 	existing, err := s.repo.FindByEmail(email)
 	if err != nil {
@@ -79,14 +115,11 @@ func (s *staffService) CreateStaff(email, password, hospitalName string) (string
 		return "", err
 	}
 
-	// DB requires at least one name; default to the part of the email before @
-	nameEN := strings.SplitN(email, "@", 2)[0]
 	staff := &domain.Staff{
 		HospitalID:   hospital.ID,
 		HospitalName: hospital.Name,
 		Email:        email,
 		Password:     string(hashed),
-		NameEN:       &nameEN,
 	}
 
 	if err := s.repo.Create(staff); err != nil {

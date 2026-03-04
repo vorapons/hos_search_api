@@ -2,14 +2,17 @@ package main
 
 import (
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"pt_search_hos/config"
 	"pt_search_hos/handler"
 	"pt_search_hos/repository"
 	"pt_search_hos/services"
 
-	"github.com/joho/godotenv"
 	"github.com/gofiber/fiber/v2"
+	"github.com/joho/godotenv"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -40,6 +43,22 @@ func main() {
 	app := fiber.New()
 	handler.SetupRoutes(app, staffH, patientH, cfg.JWTSecret, staffSvc.IsTokenBlacklisted)
 
-	log.Printf("server starting on :%s", cfg.AppPort)
-	log.Fatal(app.Listen(":" + cfg.AppPort))
+	// Start server in background
+	go func() {
+		log.Printf("server starting on :%s", cfg.AppPort)
+		if err := app.Listen(":" + cfg.AppPort); err != nil {
+			log.Fatalf("server error: %v", err)
+		}
+	}()
+
+	// Wait for Ctrl+C
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Println("shutting down server...")
+	if err := app.Shutdown(); err != nil {
+		log.Fatalf("shutdown error: %v", err)
+	}
+	log.Println("server stopped")
 }
