@@ -24,8 +24,8 @@ type mockStaffService struct {
 	mock.Mock
 }
 
-func (m *mockStaffService) Login(email, password string) (string, error) {
-	args := m.Called(email, password)
+func (m *mockStaffService) Login(email, password, hospital string) (string, error) {
+	args := m.Called(email, password, hospital)
 	return args.String(0), args.Error(1)
 }
 
@@ -104,10 +104,10 @@ func TestHello_HealthCheck(t *testing.T) {
 // positive: valid credentials → 200 with token
 func TestLogin_Success(t *testing.T) {
 	svc := new(mockStaffService)
-	svc.On("Login", "user@example.com", "Pass1!xx").Return("tok123", nil)
+	svc.On("Login", "user@example.com", "Pass1!xx", "Bangkok Hospital").Return("tok123", nil)
 
 	req, _ := http.NewRequest(http.MethodPost, "/staff/login",
-		jsonBody(map[string]string{"login": "user@example.com", "password": "Pass1!xx"}))
+		jsonBody(map[string]string{"username": "user@example.com", "password": "Pass1!xx", "hospital": "Bangkok Hospital"}))
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, _ := setupApp(svc).Test(req)
@@ -133,10 +133,10 @@ func TestLogin_BadBody(t *testing.T) {
 // negative: empty email/password → 400 INVALID_INPUT
 func TestLogin_InvalidInput(t *testing.T) {
 	svc := new(mockStaffService)
-	svc.On("Login", "", "").Return("", domain.ErrInvalidInput)
+	svc.On("Login", "", "", "").Return("", domain.ErrInvalidInput)
 
 	req, _ := http.NewRequest(http.MethodPost, "/staff/login",
-		jsonBody(map[string]string{"login": "", "password": ""}))
+		jsonBody(map[string]string{"username": "", "password": "", "hospital": ""}))
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, _ := setupApp(svc).Test(req)
@@ -150,10 +150,10 @@ func TestLogin_InvalidInput(t *testing.T) {
 // negative: wrong password → 401 UNAUTHORIZED
 func TestLogin_Unauthorized(t *testing.T) {
 	svc := new(mockStaffService)
-	svc.On("Login", "user@example.com", "WrongPass1!").Return("", domain.ErrUnauthorized)
+	svc.On("Login", "user@example.com", "WrongPass1!", "Bangkok Hospital").Return("", domain.ErrUnauthorized)
 
 	req, _ := http.NewRequest(http.MethodPost, "/staff/login",
-		jsonBody(map[string]string{"login": "user@example.com", "password": "WrongPass1!"}))
+		jsonBody(map[string]string{"username": "user@example.com", "password": "WrongPass1!", "hospital": "Bangkok Hospital"}))
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, _ := setupApp(svc).Test(req)
@@ -167,10 +167,10 @@ func TestLogin_Unauthorized(t *testing.T) {
 // negative: login value is not an email address → 401 UNAUTHORIZED (service treats it as user not found)
 func TestLogin_InvalidEmailFormat(t *testing.T) {
 	svc := new(mockStaffService)
-	svc.On("Login", "notanemail", "Pass1!xx").Return("", domain.ErrUnauthorized)
+	svc.On("Login", "notanemail", "Pass1!xx", "Bangkok Hospital").Return("", domain.ErrUnauthorized)
 
 	req, _ := http.NewRequest(http.MethodPost, "/staff/login",
-		jsonBody(map[string]string{"login": "notanemail", "password": "Pass1!xx"}))
+		jsonBody(map[string]string{"username": "notanemail", "password": "Pass1!xx", "hospital": "Bangkok Hospital"}))
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, _ := setupApp(svc).Test(req)
@@ -184,10 +184,10 @@ func TestLogin_InvalidEmailFormat(t *testing.T) {
 // negative: unexpected service error → 500
 func TestLogin_InternalError(t *testing.T) {
 	svc := new(mockStaffService)
-	svc.On("Login", "user@example.com", "Pass1!xx").Return("", assert.AnError)
+	svc.On("Login", "user@example.com", "Pass1!xx", "Bangkok Hospital").Return("", assert.AnError)
 
 	req, _ := http.NewRequest(http.MethodPost, "/staff/login",
-		jsonBody(map[string]string{"login": "user@example.com", "password": "Pass1!xx"}))
+		jsonBody(map[string]string{"username": "user@example.com", "password": "Pass1!xx", "hospital": "Bangkok Hospital"}))
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, _ := setupApp(svc).Test(req)
@@ -203,7 +203,7 @@ func TestCreate_Success(t *testing.T) {
 
 	req, _ := http.NewRequest(http.MethodPost, "/staff/create",
 		jsonBody(map[string]string{
-			"login":    "new@example.com",
+			"username":    "new@example.com",
 			"password": "Pass1!xx",
 			"hospital": "Bangkok Hospital",
 		}))
@@ -235,7 +235,7 @@ func TestCreate_InvalidInput(t *testing.T) {
 	svc.On("CreateStaff", "", "", "").Return("", domain.ErrInvalidInput)
 
 	req, _ := http.NewRequest(http.MethodPost, "/staff/create",
-		jsonBody(map[string]string{"login": "", "password": "", "hospital": ""}))
+		jsonBody(map[string]string{"username": "", "password": "", "hospital": ""}))
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, _ := setupApp(svc).Test(req)
@@ -253,7 +253,7 @@ func TestCreate_InvalidEmailFormat(t *testing.T) {
 
 	req, _ := http.NewRequest(http.MethodPost, "/staff/create",
 		jsonBody(map[string]string{
-			"login":    "notanemail",
+			"username":    "notanemail",
 			"password": "Pass1!xx",
 			"hospital": "Bangkok Hospital",
 		}))
@@ -274,7 +274,7 @@ func TestCreate_WeakPassword(t *testing.T) {
 
 	req, _ := http.NewRequest(http.MethodPost, "/staff/create",
 		jsonBody(map[string]string{
-			"login":    "new@example.com",
+			"username":    "new@example.com",
 			"password": "weak",
 			"hospital": "Bangkok Hospital",
 		}))
@@ -295,7 +295,7 @@ func TestCreate_StaffExists(t *testing.T) {
 
 	req, _ := http.NewRequest(http.MethodPost, "/staff/create",
 		jsonBody(map[string]string{
-			"login":    "dup@example.com",
+			"username":    "dup@example.com",
 			"password": "Pass1!xx",
 			"hospital": "Bangkok Hospital",
 		}))
@@ -316,7 +316,7 @@ func TestCreate_HospitalNotFound(t *testing.T) {
 
 	req, _ := http.NewRequest(http.MethodPost, "/staff/create",
 		jsonBody(map[string]string{
-			"login":    "user@example.com",
+			"username":    "user@example.com",
 			"password": "Pass1!xx",
 			"hospital": "Unknown Hospital",
 		}))
@@ -337,7 +337,7 @@ func TestCreate_HospitalNameWrongCase(t *testing.T) {
 
 	req, _ := http.NewRequest(http.MethodPost, "/staff/create",
 		jsonBody(map[string]string{
-			"login":    "user@example.com",
+			"username":    "user@example.com",
 			"password": "Pass1!xx",
 			"hospital": "bangkok hospital",
 		}))
@@ -358,7 +358,7 @@ func TestCreate_InternalError(t *testing.T) {
 
 	req, _ := http.NewRequest(http.MethodPost, "/staff/create",
 		jsonBody(map[string]string{
-			"login":    "user@example.com",
+			"username":    "user@example.com",
 			"password": "Pass1!xx",
 			"hospital": "Bangkok Hospital",
 		}))

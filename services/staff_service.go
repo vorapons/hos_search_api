@@ -62,8 +62,8 @@ func NewStaffService(repo domain.StaffRepository, jwtSecret string) domain.Staff
 	}
 }
 
-func (s *staffService) Login(email, password string) (string, error) {
-	if email == "" || password == "" {
+func (s *staffService) Login(email, password, hospitalName string) (string, error) {
+	if email == "" || password == "" || hospitalName == "" {
 		return "", domain.ErrInvalidInput
 	}
 
@@ -79,6 +79,10 @@ func (s *staffService) Login(email, password string) (string, error) {
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(staff.Password), []byte(password)); err != nil {
+		return "", domain.ErrUnauthorized
+	}
+
+	if staff.HospitalName != hospitalName {
 		return "", domain.ErrUnauthorized
 	}
 

@@ -28,7 +28,7 @@ type StaffRepository interface {
 
 // StaffService is the port (interface) for the use-case layer.
 type StaffService interface {
-	Login(email, password string) (token string, err error)
+	Login(email, password, hospitalName string) (token string, err error)
 	CreateStaff(email, password, hospitalName string) (token string, err error)
 	Logout(token string) error
 	IsTokenBlacklisted(token string) bool

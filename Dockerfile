@@ -15,7 +15,8 @@ FROM alpine:latest
 WORKDIR /app
 
 COPY --from=builder /app/server .
+COPY --from=builder /app/openapi.yaml .
 
-EXPOSE 3458
+EXPOSE 8080
 
 CMD ["./server"]

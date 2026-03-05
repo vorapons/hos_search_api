@@ -87,12 +87,13 @@ func makeSignedToken(email, hospitalID, hospital string) string {
 func TestLogin_Success(t *testing.T) {
 	repo := new(mockStaffRepo)
 	repo.On("FindByEmail", "user@example.com").Return(&domain.Staff{
-		Email:    "user@example.com",
-		Password: hashPassword("Pass1!xx"),
+		Email:        "user@example.com",
+		Password:     hashPassword("Pass1!xx"),
+		HospitalName: "Bangkok Hospital",
 	}, nil)
 
 	svc := newService(repo)
-	token, err := svc.Login("user@example.com", "Pass1!xx")
+	token, err := svc.Login("user@example.com", "Pass1!xx", "Bangkok Hospital")
 
 	assert.NoError(t, err)
 	assert.NotEmpty(t, token)
@@ -102,14 +103,21 @@ func TestLogin_Success(t *testing.T) {
 // negative: empty email → ErrInvalidInput
 func TestLogin_EmptyEmail(t *testing.T) {
 	svc := newService(new(mockStaffRepo))
-	_, err := svc.Login("", "Pass1!xx")
+	_, err := svc.Login("", "Pass1!xx", "Bangkok Hospital")
 	assert.ErrorIs(t, err, domain.ErrInvalidInput)
 }
 
 // negative: empty password → ErrInvalidInput
 func TestLogin_EmptyPassword(t *testing.T) {
 	svc := newService(new(mockStaffRepo))
-	_, err := svc.Login("user@example.com", "")
+	_, err := svc.Login("user@example.com", "", "Bangkok Hospital")
+	assert.ErrorIs(t, err, domain.ErrInvalidInput)
+}
+
+// negative: empty hospital → ErrInvalidInput
+func TestLogin_EmptyHospital(t *testing.T) {
+	svc := newService(new(mockStaffRepo))
+	_, err := svc.Login("user@example.com", "Pass1!xx", "")
 	assert.ErrorIs(t, err, domain.ErrInvalidInput)
 }
 
@@ -118,7 +126,7 @@ func TestLogin_NotEmailFormat(t *testing.T) {
 	repo := new(mockStaffRepo)
 	repo.On("FindByEmail", "notanemail").Return(nil, nil)
 
-	_, err := newService(repo).Login("notanemail", "Pass1!xx")
+	_, err := newService(repo).Login("notanemail", "Pass1!xx", "Bangkok Hospital")
 	assert.ErrorIs(t, err, domain.ErrUnauthorized)
 	repo.AssertExpectations(t) // repo IS called — no short-circuit on format
 }
@@ -128,7 +136,7 @@ func TestLogin_UserNotFound(t *testing.T) {
 	repo := new(mockStaffRepo)
 	repo.On("FindByEmail", "ghost@example.com").Return(nil, nil)
 
-	_, err := newService(repo).Login("ghost@example.com", "Pass1!xx")
+	_, err := newService(repo).Login("ghost@example.com", "Pass1!xx", "Bangkok Hospital")
 	assert.ErrorIs(t, err, domain.ErrUnauthorized)
 }
 
@@ -136,11 +144,25 @@ func TestLogin_UserNotFound(t *testing.T) {
 func TestLogin_WrongPassword(t *testing.T) {
 	repo := new(mockStaffRepo)
 	repo.On("FindByEmail", "user@example.com").Return(&domain.Staff{
-		Email:    "user@example.com",
-		Password: hashPassword("CorrectPass1!"),
+		Email:        "user@example.com",
+		Password:     hashPassword("CorrectPass1!"),
+		HospitalName: "Bangkok Hospital",
 	}, nil)
 
-	_, err := newService(repo).Login("user@example.com", "WrongPass1!")
+	_, err := newService(repo).Login("user@example.com", "WrongPass1!", "Bangkok Hospital")
+	assert.ErrorIs(t, err, domain.ErrUnauthorized)
+}
+
+// negative: hospital name does not match staff's hospital → ErrUnauthorized
+func TestLogin_WrongHospital(t *testing.T) {
+	repo := new(mockStaffRepo)
+	repo.On("FindByEmail", "user@example.com").Return(&domain.Staff{
+		Email:        "user@example.com",
+		Password:     hashPassword("Pass1!xx"),
+		HospitalName: "Bangkok Hospital",
+	}, nil)
+
+	_, err := newService(repo).Login("user@example.com", "Pass1!xx", "Other Hospital")
 	assert.ErrorIs(t, err, domain.ErrUnauthorized)
 }
 
@@ -149,7 +171,7 @@ func TestLogin_DBError(t *testing.T) {
 	repo := new(mockStaffRepo)
 	repo.On("FindByEmail", "user@example.com").Return(nil, assert.AnError)
 
-	_, err := newService(repo).Login("user@example.com", "Pass1!xx")
+	_, err := newService(repo).Login("user@example.com", "Pass1!xx", "Bangkok Hospital")
 	assert.Error(t, err)
 	assert.NotErrorIs(t, err, domain.ErrUnauthorized)
 }

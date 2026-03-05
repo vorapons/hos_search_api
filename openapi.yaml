@@ -13,10 +13,11 @@ info:
   version: 1.0.0
 
 servers:
-  - url: http://localhost:3458
+  - url: http://localhost:3456
     description: Local development server
-  - url: https://api.hospital.example.com
+  - url: https://hossearchapi-1071770156665.asia-southeast3.run.app
     description: Production server
+  
 
 tags:
   - name: system
@@ -323,8 +324,9 @@ paths:
             schema:
               $ref: '#/components/schemas/StaffLoginRequest'
             example:
-              login: "admin@bangkokhospital.com"
+              username: "admin@bangkokhospital.com"
               password: "Admin1!xx"
+              hospital: "Bangkok Hospital"
       responses:
         '200':
           description: Login successful — returns JWT token
@@ -388,7 +390,7 @@ paths:
             schema:
               $ref: '#/components/schemas/StaffCreateRequest'
             example:
-              login: "newstaff@bangkok-hospital.com"
+              username: "newstaff@bangkok-hospital.com"
               password: "NewStaff1!xx"
               hospital: "Bangkok Hospital"
       responses:
@@ -625,29 +627,34 @@ components:
     StaffLoginRequest:
       type: object
       required:
-        - login
+        - username
         - password
+        - hospital
       properties:
-        login:
+        username:
           type: string
-          description: Staff login (email)
+          description: Staff username (email)
           example: "staff@bangkok-hospital.com"
         password:
           type: string
           format: password
           description: Staff password
           example: "Admin1!xx"
+        hospital:
+          type: string
+          description: Hospital name (must match the staff account's registered hospital)
+          example: "Bangkok Hospital"
 
     StaffCreateRequest:
       type: object
       required:
-        - login
+        - username
         - password
         - hospital
       properties:
-        login:
+        username:
           type: string
-          description: New staff login (email)
+          description: New staff username (email)
           example: "newstaff@bangkok-hospital.com"
         password:
           type: string

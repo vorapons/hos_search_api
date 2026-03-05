@@ -14,6 +14,7 @@ import (
 	"pt_search_hos/repository"
 	"pt_search_hos/services"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"gorm.io/driver/postgres"
@@ -49,6 +50,12 @@ func main() {
 
 	// Gin
 	r := gin.New()
+	r.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"https://hossearchapi-1071770156665.asia-southeast3.run.app", "http://localhost:3456", "http://localhost:8080"},
+		AllowMethods:     []string{"GET", "POST", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+		AllowCredentials: true,
+	}))
 	r.Use(gin.Logger(), gin.Recovery())
 	ginhandler.SetupRoutes(r, staffH, patientH, cfg.JWTSecret, staffSvc.IsTokenBlacklisted)
 
