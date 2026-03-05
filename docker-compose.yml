@@ -30,9 +30,9 @@ services:
       DB_PASSWORD: postgres
       DB_NAME: pt_search_hos
       JWT_SECRET: change-me-in-production
-      APP_PORT: 3458
+      APP_PORT: 3456
     ports:
-      - "3458:3458"
+      - "3456:3456"
     depends_on:
       postgres:
         condition: service_healthy
