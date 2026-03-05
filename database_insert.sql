@@ -4,14 +4,6 @@
 
 
 -- ============================================================
--- STAFF (1) — seed admin account
--- password: Admin1!xx  (bcrypt cost 10)
--- ============================================================
-INSERT INTO staff (hospital_id, email, password, created_at, updated_at) VALUES
-  ('BKH01', 'admin@bangkokhospital.com', '$2a$10$8uM7WKMoblegRY4WCjaa0OUuaA35NYNcBlkatHZUsK5/bXk6LS1zC', NOW(), NOW());
-
-
--- ============================================================
 -- HOSPITALS (5)
 -- ============================================================
 INSERT INTO hospitals (id, name) VALUES
@@ -216,3 +208,11 @@ INSERT INTO patients (
   ('TBR01', 'Hyunwoo',  NULL,       'Lee',        'KR30000003', '1986-03-05', 'male',   NULL,            'hyunwoo.lee@email.kr',      'TH-0017'),
   ('VIM01', 'Sooyeon',  NULL,       'Choi',       'KR40000004', '2001-07-29', 'female', '+821012340004', 'sooyeon.choi@email.kr',     'VM-0017'),
   ('SMJ01', 'Junho',    NULL,       'Jung',       'KR50000005', '1974-01-13', 'male',   '+821012340005', 'junho.jung@email.kr',       'SMJ-0017');
+
+
+-- ============================================================
+-- STAFF (1) — seed admin account  ← must come after hospitals (FK)
+-- password: Admin1!xx  (bcrypt cost 10)
+-- ============================================================
+INSERT INTO staff (hospital_id, email, password, created_at, updated_at) VALUES
+  ('BKH01', 'admin@bangkokhospital.com', '$2a$10$8uM7WKMoblegRY4WCjaa0OUuaA35NYNcBlkatHZUsK5/bXk6LS1zC', NOW(), NOW());
