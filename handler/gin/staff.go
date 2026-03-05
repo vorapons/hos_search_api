@@ -19,12 +19,13 @@ func NewStaffHandler(s domain.StaffService) *StaffHandler {
 }
 
 type loginRequest struct {
-	Login    string `json:"login"`
+	Username string `json:"username"`
 	Password string `json:"password"`
+	Hospital string `json:"hospital"`
 }
 
 type createStaffRequest struct {
-	Login    string `json:"login"`
+	Username string `json:"username"`
 	Password string `json:"password"`
 	Hospital string `json:"hospital"`
 }
@@ -40,12 +41,12 @@ func (h *StaffHandler) Login(c *gin.Context) {
 		return
 	}
 
-	token, err := h.service.Login(req.Login, req.Password)
+	token, err := h.service.Login(req.Username, req.Password, req.Hospital)
 	if err != nil {
 		if errors.Is(err, domain.ErrInvalidInput) {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"code":    "INVALID_INPUT",
-				"message": "Login and password are required",
+				"message": "Username, password, and hospital are required",
 			})
 			return
 		}
@@ -77,7 +78,7 @@ func (h *StaffHandler) Create(c *gin.Context) {
 		return
 	}
 
-	token, err := h.service.CreateStaff(req.Login, req.Password, req.Hospital)
+	token, err := h.service.CreateStaff(req.Username, req.Password, req.Hospital)
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrInvalidInput):

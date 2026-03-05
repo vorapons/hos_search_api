@@ -128,7 +128,7 @@ fi
 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
   -X POST "${APP_URL}/staff/login" \
   -H "Content-Type: application/json" \
-  -d '{"login":"probe@test.com","password":"Probe1!xx"}')
+  -d '{"username":"probe@test.com","password":"Probe1!xx","hospital":"probe"}')
 if [ "$HTTP_CODE" = "401" ]; then
   ok "App → DB round-trip OK (POST /staff/login probe → 401 Unauthorized)"
 elif [ "$HTTP_CODE" = "500" ]; then
