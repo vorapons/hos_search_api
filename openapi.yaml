@@ -1,0 +1,753 @@
+openapi: 3.0.0
+
+info:
+  title: Hospital Patient Search API
+  description: |-
+    REST API for searching and retrieving patient information across hospitals.
+    Staff must authenticate with a Bearer JWT token to access protected endpoints.
+
+    - 🔓 No authentication required
+    - 🔐 Bearer token (JWT) authentication required
+  contact:
+    email: vorapon_s@hotmail.com
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:3458
+    description: Local development server
+  - url: https://api.hospital.example.com
+    description: Production server
+
+tags:
+  - name: system
+    description: Server health and status
+  - name: patient
+    description: Patient search and retrieval
+  - name: staff
+    description: Staff authentication and management
+
+# Global security — overridden per-endpoint for public routes
+security:
+  - bearerAuth: []
+
+paths:
+
+  # ============================================================
+  # SYSTEM
+  # ============================================================
+
+  /hello:
+    get:
+      tags:
+        - system
+      summary: say Hello! to server for Health check
+      description: |-
+        🔓 Returns the current status of the server.
+        Use this endpoint to verify the service is running and reachable.
+      operationId: healthCheck
+      security: []   # public — no auth required
+      responses:
+        '200':
+          description: Server is healthy and running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "ok"
+                timestamp: "2026-03-03T10:00:00Z"
+
+  # ============================================================
+  # PATIENT
+  # ============================================================
+
+  /patient/search:
+    post:
+      tags:
+        - patient
+      summary: Search patient information
+      description: |-
+        🔐 Returns patients belonging to the same hospital as the authenticated staff member.
+        At least one search field must be provided. All provided fields are combined with AND logic.
+        Returns an empty array when no patients match — never 404.
+      operationId: searchPatients
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatientSearchRequest'
+            examples:
+              byNationalId:
+                summary: Search by Thai national ID
+                value:
+                  national_id: "1100100012341"
+              byName:
+                summary: Search by English name (partial match)
+                value:
+                  first_name: "John"
+                  last_name: "Smith"
+              byPassport:
+                summary: Search by passport ID
+                value:
+                  passport_id: "JP10234567"
+              byNameAndDob:
+                summary: Search by name and date of birth
+                value:
+                  first_name: "Somchai"
+                  last_name: "Jaidee"
+                  date_of_birth: "1985-03-15"
+      responses:
+        '200':
+          description: Successful — returns matching patients (empty array if none found)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PatientDetail'
+              example:
+                - first_name_th: "สมชาย"
+                  middle_name_th: null
+                  last_name_th: "ใจดี"
+                  first_name_en: "Somchai"
+                  middle_name_en: null
+                  last_name_en: "Jaidee"
+                  date_of_birth: "1985-03-15T00:00:00Z"
+                  patient_hn: "BKH-0001"
+                  national_id: "1100100012341"
+                  passport_id: null
+                  phone_number: "0812345001"
+                  email: "somchai.j@email.com"
+                  gender: "male"
+                - first_name_th: null
+                  middle_name_th: null
+                  last_name_th: null
+                  first_name_en: "Yuki"
+                  middle_name_en: null
+                  last_name_en: "Tanaka"
+                  date_of_birth: "1990-03-14T00:00:00Z"
+                  patient_hn: "BKH-0005"
+                  national_id: null
+                  passport_id: "JP10234567"
+                  phone_number: "+819011112001"
+                  email: "yuki.tanaka@email.jp"
+                  gender: "female"
+        '400':
+          description: Bad request — no search fields provided or field format is invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "INVALID_INPUT"
+                message: "At least one search condition is required"
+        '401':
+          description: Unauthorized — missing or invalid Bearer token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "UNAUTHORIZED"
+                message: "Invalid or expired token"
+        '429':
+          description: Too many requests — rate limit exceeded (100 req/min per IP)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "RATE_LIMIT_EXCEEDED"
+                message: "Too many requests, please try again later"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "INTERNAL_ERROR"
+                message: "An unexpected error occurred"
+
+  /patient/search/{id}:
+    get:
+      tags:
+        - patient
+      summary: Get patient by national ID or passport ID
+      description: |-
+        🔐 Returns a single patient's full information by their national ID (Thai 13-digit)
+        or passport ID. The system determines the ID type automatically.
+        Staff can only retrieve patients within their own hospital.
+      operationId: getPatientById
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Patient national ID (13-digit Thai) or passport ID
+          schema:
+            type: string
+          examples:
+            nationalId:
+              summary: Thai national ID
+              value: "1100100012341"
+            passportId:
+              summary: Passport ID
+              value: "JP10234567"
+      responses:
+        '200':
+          description: Patient found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatientDetail'
+              examples:
+                thaiPatient:
+                  summary: Thai patient with national ID
+                  value:
+                    first_name_th: "สมชาย"
+                    middle_name_th: null
+                    last_name_th: "ใจดี"
+                    first_name_en: "Somchai"
+                    middle_name_en: null
+                    last_name_en: "Jaidee"
+                    date_of_birth: "1985-03-15T00:00:00Z"
+                    patient_hn: "BKH-0001"
+                    national_id: "1100100012341"
+                    passport_id: null
+                    phone_number: "0812345001"
+                    email: "somchai.j@email.com"
+                    gender: "male"
+                foreignPatientWithMiddleName:
+                  summary: US patient with passport ID and middle name
+                  value:
+                    first_name_th: null
+                    middle_name_th: null
+                    last_name_th: null
+                    first_name_en: "John"
+                    middle_name_en: "Michael"
+                    last_name_en: "Smith"
+                    date_of_birth: "1982-05-10T00:00:00Z"
+                    patient_hn: "BKH-0007"
+                    national_id: null
+                    passport_id: "US10234567"
+                    phone_number: "+12125550001"
+                    email: "john.m.smith@email.com"
+                    gender: "male"
+        '400':
+          description: Bad request — ID is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "INVALID_INPUT"
+                message: "Patient ID is required"
+        '401':
+          description: Unauthorized — missing or invalid Bearer token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "UNAUTHORIZED"
+                message: "Invalid or expired token"
+        '404':
+          description: Patient not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "NOT_FOUND"
+                message: "Patient not found"
+        '429':
+          description: Too many requests — rate limit exceeded (100 req/min per IP)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "RATE_LIMIT_EXCEEDED"
+                message: "Too many requests, please try again later"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "INTERNAL_ERROR"
+                message: "An unexpected error occurred"
+
+  # ============================================================
+  # STAFF / AUTH
+  # ============================================================
+
+  /staff/login:
+    post:
+      tags:
+        - staff
+      summary: Staff login
+      description: |-
+        🔓 Authenticate a staff member and receive a JWT token.
+        The JWT payload includes: login, hospital_id, hospital, expiration date.
+      operationId: staffLogin
+      security: []   # public — no auth required
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StaffLoginRequest'
+            example:
+              login: "admin@bangkokhospital.com"
+              password: "Admin1!xx"
+      responses:
+        '200':
+          description: Login successful — returns JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+              example:
+                token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2dpbiI6InN0YWZmQGJhbmdrb2staG9zcGl0YWwuY29tIiwiaG9zcGl0YWwiOiJCYW5na29rIEhvc3BpdGFsIiwiZXhwIjoxNzQzNjM1MjAwfQ.signature"
+        '400':
+          description: Bad request — missing or malformed login/password fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "INVALID_INPUT"
+                message: "Login and password are required"
+        '401':
+          description: Unauthorized — incorrect credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "UNAUTHORIZED"
+                message: "Invalid login or password"
+        '429':
+          description: Too many requests — rate limit exceeded (10 req/min per IP)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "RATE_LIMIT_EXCEEDED"
+                message: "Too many requests, please try again later"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "INTERNAL_ERROR"
+                message: "An unexpected error occurred"
+
+  /staff/create:
+    post:
+      tags:
+        - staff
+      summary: Create staff account
+      description: |-
+        🔓 Create a new staff account linked to a hospital and receive a JWT token.
+        No authentication required — open registration.
+      operationId: staffCreate
+      security: []   # public — no auth required
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StaffCreateRequest'
+            example:
+              login: "newstaff@bangkok-hospital.com"
+              password: "NewStaff1!xx"
+              hospital: "Bangkok Hospital"
+      responses:
+        '201':
+          description: Staff account created successfully — returns JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+              example:
+                token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2dpbiI6Im5ld3N0YWZmQGJhbmdrb2staG9zcGl0YWwuY29tIiwiaG9zcGl0YWwiOiJCYW5na29rIEhvc3BpdGFsIiwiZXhwIjoxNzQzNjM1MjAwfQ.signature"
+        '400':
+          description: Bad request — missing or invalid fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "INVALID_INPUT"
+                message: "Login, password, and hospital are required"
+        '404':
+          description: Hospital not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "NOT_FOUND"
+                message: "Hospital not found"
+        '409':
+          description: Conflict — an account with this login already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "CONFLICT"
+                message: "A staff account with this login already exists"
+        '429':
+          description: Too many requests — rate limit exceeded (10 req/min per IP)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "RATE_LIMIT_EXCEEDED"
+                message: "Too many requests, please try again later"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "INTERNAL_ERROR"
+                message: "An unexpected error occurred"
+
+  /staff/hello:
+    get:
+      tags:
+        - staff
+      summary: Get current staff info
+      description: |-
+        🔐 Returns the JWT claims of the currently authenticated staff member.
+        Useful for verifying token contents and expiry.
+      operationId: staffHello
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Returns authenticated staff details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StaffHelloResponse'
+              example:
+                login: "staff@bangkok-hospital.com"
+                hospital: "Bangkok Hospital"
+                expires_at: "2026-03-04T10:00:00Z"
+        '401':
+          description: Unauthorized — missing or invalid Bearer token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "UNAUTHORIZED"
+                message: "Invalid or expired token"
+        '429':
+          description: Too many requests — rate limit exceeded (100 req/min per IP)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "RATE_LIMIT_EXCEEDED"
+                message: "Too many requests, please try again later"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "INTERNAL_ERROR"
+                message: "An unexpected error occurred"
+
+  /staff/logout:
+    get:
+      tags:
+        - staff
+      summary: Staff logout
+      description: |-
+        🔐 Invalidate the current JWT token / terminate the session.
+        The token is added to a blacklist and persisted in the database.
+      operationId: staffLogout
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Logout successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+              example:
+                message: "Logged out successfully"
+        '401':
+          description: Unauthorized — missing or invalid Bearer token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "UNAUTHORIZED"
+                message: "Invalid or expired token"
+        '429':
+          description: Too many requests — rate limit exceeded (100 req/min per IP)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "RATE_LIMIT_EXCEEDED"
+                message: "Too many requests, please try again later"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "INTERNAL_ERROR"
+                message: "An unexpected error occurred"
+
+# ============================================================
+# COMPONENTS
+# ============================================================
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+
+    # ----------------------------------------------------------
+    # SYSTEM SCHEMAS
+    # ----------------------------------------------------------
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          description: Server status
+          enum: [ok]
+          example: "ok"
+        timestamp:
+          type: string
+          format: date-time
+          description: Current server time (UTC)
+          example: "2026-03-03T10:00:00Z"
+
+    # ----------------------------------------------------------
+    # REQUEST SCHEMAS
+    # ----------------------------------------------------------
+
+    PatientSearchRequest:
+      type: object
+      description: Search criteria. At least one field must be provided. Fields are combined with AND logic. Text fields support partial (contains) matching.
+      properties:
+        national_id:
+          type: string
+          description: Thai national ID (13 digits)
+          example: "1100100012341"
+        passport_id:
+          type: string
+          description: Passport number
+          example: "JP10234567"
+        first_name:
+          type: string
+          description: First name in Thai or English (partial match supported)
+          example: "Somchai"
+        middle_name:
+          type: string
+          description: Middle name in Thai or English
+          example: "Michael"
+        last_name:
+          type: string
+          description: Last name in Thai or English (partial match supported)
+          example: "Jaidee"
+        date_of_birth:
+          type: string
+          format: date
+          description: Date of birth (YYYY-MM-DD) — exact match
+          example: "1985-03-15"
+        phone_number:
+          type: string
+          description: Phone number (partial match supported)
+          example: "0812345001"
+        email:
+          type: string
+          format: email
+          description: Email address (partial match supported)
+          example: "somchai.j@email.com"
+
+    StaffLoginRequest:
+      type: object
+      required:
+        - login
+        - password
+      properties:
+        login:
+          type: string
+          description: Staff login (email)
+          example: "staff@bangkok-hospital.com"
+        password:
+          type: string
+          format: password
+          description: Staff password
+          example: "Admin1!xx"
+
+    StaffCreateRequest:
+      type: object
+      required:
+        - login
+        - password
+        - hospital
+      properties:
+        login:
+          type: string
+          description: New staff login (email)
+          example: "newstaff@bangkok-hospital.com"
+        password:
+          type: string
+          format: password
+          description: "New staff password — must be ≥ 8 chars and contain uppercase, lowercase, digit, and special character"
+          example: "NewStaff1!xx"
+        hospital:
+          type: string
+          description: Hospital name
+          example: "Bangkok Hospital"
+
+    # ----------------------------------------------------------
+    # RESPONSE SCHEMAS
+    # ----------------------------------------------------------
+
+    PatientDetail:
+      type: object
+      description: Full patient record returned by the API
+      properties:
+        first_name_th:
+          type: string
+          nullable: true
+          example: "สมชาย"
+        middle_name_th:
+          type: string
+          nullable: true
+          example: null
+        last_name_th:
+          type: string
+          nullable: true
+          example: "ใจดี"
+        first_name_en:
+          type: string
+          nullable: true
+          example: "Somchai"
+        middle_name_en:
+          type: string
+          nullable: true
+          example: null
+        last_name_en:
+          type: string
+          nullable: true
+          example: "Jaidee"
+        date_of_birth:
+          type: string
+          format: date-time
+          nullable: true
+          description: Date of birth serialised as RFC3339 by Go's time.Time (e.g. "1985-03-15T00:00:00Z")
+          example: "1985-03-15T00:00:00Z"
+        patient_hn:
+          type: string
+          nullable: true
+          description: Hospital number (unique within hospital)
+          example: "BKH-0001"
+        national_id:
+          type: string
+          nullable: true
+          description: Thai national ID (13 digits)
+          example: "1100100012341"
+        passport_id:
+          type: string
+          nullable: true
+          description: Passport number
+          example: null
+        phone_number:
+          type: string
+          nullable: true
+          example: "0812345001"
+        email:
+          type: string
+          nullable: true
+          example: "somchai.j@email.com"
+        gender:
+          type: string
+          nullable: true
+          enum: [male, female, other]
+          example: "male"
+
+    TokenResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT token. Payload includes login, hospital_id, hospital, and expiration date.
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2dpbiI6InN0YWZmQGJhbmdrb2staG9zcGl0YWwuY29tIiwiaG9zcGl0YWwiOiJCYW5na29rIEhvc3BpdGFsIiwiZXhwIjoxNzQzNjM1MjAwfQ.signature"
+
+    StaffHelloResponse:
+      type: object
+      properties:
+        login:
+          type: string
+          description: Staff login (email)
+          example: "staff@bangkok-hospital.com"
+        hospital:
+          type: string
+          description: Hospital name
+          example: "Bangkok Hospital"
+        expires_at:
+          type: string
+          format: date-time
+          description: Token expiration time (UTC)
+          example: "2026-03-04T10:00:00Z"
+
+    # ----------------------------------------------------------
+    # ERROR SCHEMA (default for all error responses)
+    # ----------------------------------------------------------
+
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: Machine-readable error code
+          example: "NOT_FOUND"
+        message:
+          type: string
+          description: Human-readable error description
+          example: "The requested resource was not found"
