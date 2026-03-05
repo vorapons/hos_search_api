@@ -83,8 +83,25 @@ func jsonBody(v any) *bytes.Reader {
 	return bytes.NewReader(b)
 }
 
+// ── GET /hello ────────────────────────────────────────────────────────────────
+
+// positive: health check → 200 with status and timestamp
+func TestHello_HealthCheck(t *testing.T) {
+	svc := new(mockStaffService)
+	req, _ := http.NewRequest(http.MethodGet, "/hello", nil)
+
+	resp, _ := setupApp(svc).Test(req)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body map[string]string
+	json.NewDecoder(resp.Body).Decode(&body)
+	assert.Equal(t, "ok", body["status"])
+	assert.NotEmpty(t, body["timestamp"])
+}
+
 // ── POST /staff/login ─────────────────────────────────────────────────────────
 
+// positive: valid credentials → 200 with token
 func TestLogin_Success(t *testing.T) {
 	svc := new(mockStaffService)
 	svc.On("Login", "user@example.com", "Pass1!xx").Return("tok123", nil)
@@ -102,6 +119,7 @@ func TestLogin_Success(t *testing.T) {
 	svc.AssertExpectations(t)
 }
 
+// negative: malformed JSON body → 400
 func TestLogin_BadBody(t *testing.T) {
 	svc := new(mockStaffService)
 	req, _ := http.NewRequest(http.MethodPost, "/staff/login",
@@ -112,6 +130,7 @@ func TestLogin_BadBody(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
 
+// negative: empty email/password → 400 INVALID_INPUT
 func TestLogin_InvalidInput(t *testing.T) {
 	svc := new(mockStaffService)
 	svc.On("Login", "", "").Return("", domain.ErrInvalidInput)
@@ -128,6 +147,7 @@ func TestLogin_InvalidInput(t *testing.T) {
 	assert.Equal(t, "INVALID_INPUT", body["code"])
 }
 
+// negative: wrong password → 401 UNAUTHORIZED
 func TestLogin_Unauthorized(t *testing.T) {
 	svc := new(mockStaffService)
 	svc.On("Login", "user@example.com", "WrongPass1!").Return("", domain.ErrUnauthorized)
@@ -144,6 +164,24 @@ func TestLogin_Unauthorized(t *testing.T) {
 	assert.Equal(t, "UNAUTHORIZED", body["code"])
 }
 
+// negative: login value is not an email address → 401 UNAUTHORIZED (service treats it as user not found)
+func TestLogin_InvalidEmailFormat(t *testing.T) {
+	svc := new(mockStaffService)
+	svc.On("Login", "notanemail", "Pass1!xx").Return("", domain.ErrUnauthorized)
+
+	req, _ := http.NewRequest(http.MethodPost, "/staff/login",
+		jsonBody(map[string]string{"login": "notanemail", "password": "Pass1!xx"}))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, _ := setupApp(svc).Test(req)
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+
+	var body map[string]string
+	json.NewDecoder(resp.Body).Decode(&body)
+	assert.Equal(t, "UNAUTHORIZED", body["code"])
+}
+
+// negative: unexpected service error → 500
 func TestLogin_InternalError(t *testing.T) {
 	svc := new(mockStaffService)
 	svc.On("Login", "user@example.com", "Pass1!xx").Return("", assert.AnError)
@@ -158,6 +196,7 @@ func TestLogin_InternalError(t *testing.T) {
 
 // ── POST /staff/create ────────────────────────────────────────────────────────
 
+// positive: new staff account created → 201 with token
 func TestCreate_Success(t *testing.T) {
 	svc := new(mockStaffService)
 	svc.On("CreateStaff", "new@example.com", "Pass1!xx", "Bangkok Hospital").Return("tok456", nil)
@@ -179,6 +218,7 @@ func TestCreate_Success(t *testing.T) {
 	svc.AssertExpectations(t)
 }
 
+// negative: malformed JSON body → 400
 func TestCreate_BadBody(t *testing.T) {
 	svc := new(mockStaffService)
 	req, _ := http.NewRequest(http.MethodPost, "/staff/create",
@@ -189,6 +229,7 @@ func TestCreate_BadBody(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
 
+// negative: empty fields → 400 INVALID_INPUT
 func TestCreate_InvalidInput(t *testing.T) {
 	svc := new(mockStaffService)
 	svc.On("CreateStaff", "", "", "").Return("", domain.ErrInvalidInput)
@@ -205,6 +246,49 @@ func TestCreate_InvalidInput(t *testing.T) {
 	assert.Equal(t, "INVALID_INPUT", body["code"])
 }
 
+// negative: login is not a valid email address → 400 INVALID_INPUT
+func TestCreate_InvalidEmailFormat(t *testing.T) {
+	svc := new(mockStaffService)
+	svc.On("CreateStaff", "notanemail", "Pass1!xx", "Bangkok Hospital").Return("", domain.ErrInvalidInput)
+
+	req, _ := http.NewRequest(http.MethodPost, "/staff/create",
+		jsonBody(map[string]string{
+			"login":    "notanemail",
+			"password": "Pass1!xx",
+			"hospital": "Bangkok Hospital",
+		}))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, _ := setupApp(svc).Test(req)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+
+	var body map[string]string
+	json.NewDecoder(resp.Body).Decode(&body)
+	assert.Equal(t, "INVALID_INPUT", body["code"])
+}
+
+// negative: password does not meet strength requirements → 400 INVALID_INPUT
+func TestCreate_WeakPassword(t *testing.T) {
+	svc := new(mockStaffService)
+	svc.On("CreateStaff", "new@example.com", "weak", "Bangkok Hospital").Return("", domain.ErrInvalidInput)
+
+	req, _ := http.NewRequest(http.MethodPost, "/staff/create",
+		jsonBody(map[string]string{
+			"login":    "new@example.com",
+			"password": "weak",
+			"hospital": "Bangkok Hospital",
+		}))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, _ := setupApp(svc).Test(req)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+
+	var body map[string]string
+	json.NewDecoder(resp.Body).Decode(&body)
+	assert.Equal(t, "INVALID_INPUT", body["code"])
+}
+
+// negative: email already registered → 409 CONFLICT
 func TestCreate_StaffExists(t *testing.T) {
 	svc := new(mockStaffService)
 	svc.On("CreateStaff", "dup@example.com", "Pass1!xx", "Bangkok Hospital").Return("", domain.ErrStaffExists)
@@ -225,6 +309,7 @@ func TestCreate_StaffExists(t *testing.T) {
 	assert.Equal(t, "CONFLICT", body["code"])
 }
 
+// negative: hospital not in DB → 404 NOT_FOUND
 func TestCreate_HospitalNotFound(t *testing.T) {
 	svc := new(mockStaffService)
 	svc.On("CreateStaff", "user@example.com", "Pass1!xx", "Unknown Hospital").Return("", domain.ErrHospitalNotFound)
@@ -245,6 +330,28 @@ func TestCreate_HospitalNotFound(t *testing.T) {
 	assert.Equal(t, "NOT_FOUND", body["code"])
 }
 
+// negative: hospital name with wrong casing → 404 NOT_FOUND (lookup is case-sensitive)
+func TestCreate_HospitalNameWrongCase(t *testing.T) {
+	svc := new(mockStaffService)
+	svc.On("CreateStaff", "user@example.com", "Pass1!xx", "bangkok hospital").Return("", domain.ErrHospitalNotFound)
+
+	req, _ := http.NewRequest(http.MethodPost, "/staff/create",
+		jsonBody(map[string]string{
+			"login":    "user@example.com",
+			"password": "Pass1!xx",
+			"hospital": "bangkok hospital",
+		}))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, _ := setupApp(svc).Test(req)
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+
+	var body map[string]string
+	json.NewDecoder(resp.Body).Decode(&body)
+	assert.Equal(t, "NOT_FOUND", body["code"])
+}
+
+// negative: unexpected service error → 500
 func TestCreate_InternalError(t *testing.T) {
 	svc := new(mockStaffService)
 	svc.On("CreateStaff", "user@example.com", "Pass1!xx", "Bangkok Hospital").Return("", assert.AnError)
@@ -263,6 +370,7 @@ func TestCreate_InternalError(t *testing.T) {
 
 // ── GET /staff/hello ──────────────────────────────────────────────────────────
 
+// positive: valid token → 200 with login info
 func TestHello_Success(t *testing.T) {
 	svc := new(mockStaffService)
 	token := makeToken("user@example.com", "BKH01", "Bangkok Hospital")
@@ -281,6 +389,7 @@ func TestHello_Success(t *testing.T) {
 	assert.NotEmpty(t, body["expires_at"])
 }
 
+// negative: missing Authorization header → 401 Unauthorized
 func TestHello_NoAuthHeader(t *testing.T) {
 	svc := new(mockStaffService)
 	req, _ := http.NewRequest(http.MethodGet, "/staff/hello", nil)
@@ -289,6 +398,7 @@ func TestHello_NoAuthHeader(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }
 
+// negative: malformed/invalid JWT → 401 Unauthorized
 func TestHello_InvalidToken(t *testing.T) {
 	svc := new(mockStaffService)
 	svc.On("IsTokenBlacklisted", "bad.token.here").Return(false)
@@ -300,6 +410,7 @@ func TestHello_InvalidToken(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }
 
+// negative: revoked/blacklisted token → 401 UNAUTHORIZED
 func TestHello_BlacklistedToken(t *testing.T) {
 	svc := new(mockStaffService)
 	token := makeToken("user@example.com", "BKH01", "Bangkok Hospital")
@@ -318,6 +429,7 @@ func TestHello_BlacklistedToken(t *testing.T) {
 
 // ── GET /staff/logout ─────────────────────────────────────────────────────────
 
+// positive: valid token, logout succeeds → 200
 func TestLogout_Success(t *testing.T) {
 	svc := new(mockStaffService)
 	token := makeToken("user@example.com", "BKH01", "Bangkok Hospital")
@@ -336,6 +448,7 @@ func TestLogout_Success(t *testing.T) {
 	svc.AssertExpectations(t)
 }
 
+// negative: missing Authorization header → 401 Unauthorized
 func TestLogout_NoAuthHeader(t *testing.T) {
 	svc := new(mockStaffService)
 	req, _ := http.NewRequest(http.MethodGet, "/staff/logout", nil)
@@ -344,6 +457,7 @@ func TestLogout_NoAuthHeader(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }
 
+// negative: service fails to blacklist token → 500
 func TestLogout_ServiceError(t *testing.T) {
 	svc := new(mockStaffService)
 	token := makeToken("user@example.com", "BKH01", "Bangkok Hospital")

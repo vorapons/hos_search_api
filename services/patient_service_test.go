@@ -39,6 +39,7 @@ func newPatientService(repo domain.PatientRepository) domain.PatientService {
 
 // ── GetPatientByID ────────────────────────────────────────────────────────────
 
+// positive: patient found by national ID → returns patient
 func TestGetPatientByID_FoundByNationalID(t *testing.T) {
 	repo := new(mockPatientRepo)
 	patient := &domain.Patient{ID: "uuid-1", NationalID: ptr("1234567890123")}
@@ -51,6 +52,7 @@ func TestGetPatientByID_FoundByNationalID(t *testing.T) {
 	repo.AssertExpectations(t)
 }
 
+// positive: patient found by passport ID → returns patient
 func TestGetPatientByID_FoundByPassportID(t *testing.T) {
 	repo := new(mockPatientRepo)
 	patient := &domain.Patient{ID: "uuid-2", PassportID: ptr("AB123456")}
@@ -62,6 +64,7 @@ func TestGetPatientByID_FoundByPassportID(t *testing.T) {
 	assert.Equal(t, "uuid-2", result.ID)
 }
 
+// negative: patient not in DB → ErrNotFound
 func TestGetPatientByID_NotFound(t *testing.T) {
 	repo := new(mockPatientRepo)
 	repo.On("FindByID", "unknown", "BKH01").Return(nil, nil)
@@ -70,16 +73,19 @@ func TestGetPatientByID_NotFound(t *testing.T) {
 	assert.ErrorIs(t, err, domain.ErrNotFound)
 }
 
+// negative: empty patient ID → ErrInvalidInput
 func TestGetPatientByID_EmptyID(t *testing.T) {
 	_, err := newPatientService(new(mockPatientRepo)).GetPatientByID("", "BKH01")
 	assert.ErrorIs(t, err, domain.ErrInvalidInput)
 }
 
+// negative: empty hospital ID → ErrInvalidInput
 func TestGetPatientByID_EmptyHospitalID(t *testing.T) {
 	_, err := newPatientService(new(mockPatientRepo)).GetPatientByID("1234567890123", "")
 	assert.ErrorIs(t, err, domain.ErrInvalidInput)
 }
 
+// negative: repository returns DB error → propagated as-is
 func TestGetPatientByID_DBError(t *testing.T) {
 	repo := new(mockPatientRepo)
 	repo.On("FindByID", "1234567890123", "BKH01").Return(nil, assert.AnError)
@@ -91,6 +97,7 @@ func TestGetPatientByID_DBError(t *testing.T) {
 
 // ── GetPatientByCondition ─────────────────────────────────────────────────────
 
+// positive: valid condition, results returned
 func TestGetPatientByCondition_Success(t *testing.T) {
 	repo := new(mockPatientRepo)
 	input := domain.PatientSearchInput{LastName: ptr("Smith")}
@@ -104,6 +111,7 @@ func TestGetPatientByCondition_Success(t *testing.T) {
 	repo.AssertExpectations(t)
 }
 
+// positive: valid condition, no patients found → empty slice
 func TestGetPatientByCondition_EmptyResult(t *testing.T) {
 	repo := new(mockPatientRepo)
 	input := domain.PatientSearchInput{FirstName: ptr("NoOne")}
@@ -115,18 +123,21 @@ func TestGetPatientByCondition_EmptyResult(t *testing.T) {
 	assert.Empty(t, result)
 }
 
+// negative: all fields nil → ErrInvalidInput
 func TestGetPatientByCondition_NoCondition(t *testing.T) {
 	_, err := newPatientService(new(mockPatientRepo)).
 		GetPatientByCondition(domain.PatientSearchInput{}, "BKH01")
 	assert.ErrorIs(t, err, domain.ErrInvalidInput)
 }
 
+// negative: empty hospital ID → ErrInvalidInput
 func TestGetPatientByCondition_EmptyHospitalID(t *testing.T) {
 	input := domain.PatientSearchInput{NationalID: ptr("1234567890123")}
 	_, err := newPatientService(new(mockPatientRepo)).GetPatientByCondition(input, "")
 	assert.ErrorIs(t, err, domain.ErrInvalidInput)
 }
 
+// positive: search by national ID → results returned
 func TestGetPatientByCondition_ByNationalID(t *testing.T) {
 	repo := new(mockPatientRepo)
 	input := domain.PatientSearchInput{NationalID: ptr("1234567890123")}
@@ -138,6 +149,7 @@ func TestGetPatientByCondition_ByNationalID(t *testing.T) {
 	assert.Len(t, result, 1)
 }
 
+// positive: search by date of birth → results returned
 func TestGetPatientByCondition_ByDateOfBirth(t *testing.T) {
 	repo := new(mockPatientRepo)
 	dob := time.Date(1990, 1, 15, 0, 0, 0, 0, time.UTC)
@@ -150,6 +162,7 @@ func TestGetPatientByCondition_ByDateOfBirth(t *testing.T) {
 	assert.Len(t, result, 1)
 }
 
+// negative: repository returns DB error → propagated as-is
 func TestGetPatientByCondition_DBError(t *testing.T) {
 	repo := new(mockPatientRepo)
 	input := domain.PatientSearchInput{LastName: ptr("Smith")}

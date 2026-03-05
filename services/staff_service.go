@@ -67,11 +67,14 @@ func (s *staffService) Login(email, password string) (string, error) {
 		return "", domain.ErrInvalidInput
 	}
 
+	// Any login attempt with bad email format →
+	// repo.FindByEmail("notanemail") → returns nil, nil
 	staff, err := s.repo.FindByEmail(email)
 	if err != nil {
 		return "", err
 	}
 	if staff == nil {
+		// Return ErrUnauthorized > user enumeration prevention
 		return "", domain.ErrUnauthorized
 	}
 

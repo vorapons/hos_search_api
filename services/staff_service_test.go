@@ -1,6 +1,7 @@
 package services_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -80,8 +81,9 @@ func makeSignedToken(email, hospitalID, hospital string) string {
 	return signed
 }
 
-// ── Login ─────────────────────────────────────────────────────────────────────
+// ! ── Login ─────────────────────────────────────────────────────────────────────
 
+// positive: valid credentials → JWT token returned
 func TestLogin_Success(t *testing.T) {
 	repo := new(mockStaffRepo)
 	repo.On("FindByEmail", "user@example.com").Return(&domain.Staff{
@@ -97,18 +99,31 @@ func TestLogin_Success(t *testing.T) {
 	repo.AssertExpectations(t)
 }
 
+// negative: empty email → ErrInvalidInput
 func TestLogin_EmptyEmail(t *testing.T) {
 	svc := newService(new(mockStaffRepo))
 	_, err := svc.Login("", "Pass1!xx")
 	assert.ErrorIs(t, err, domain.ErrInvalidInput)
 }
 
+// negative: empty password → ErrInvalidInput
 func TestLogin_EmptyPassword(t *testing.T) {
 	svc := newService(new(mockStaffRepo))
 	_, err := svc.Login("user@example.com", "")
 	assert.ErrorIs(t, err, domain.ErrInvalidInput)
 }
 
+// negative: login is not an email format → ErrUnauthorized (user enumeration prevention — same as not found)
+func TestLogin_NotEmailFormat(t *testing.T) {
+	repo := new(mockStaffRepo)
+	repo.On("FindByEmail", "notanemail").Return(nil, nil)
+
+	_, err := newService(repo).Login("notanemail", "Pass1!xx")
+	assert.ErrorIs(t, err, domain.ErrUnauthorized)
+	repo.AssertExpectations(t) // repo IS called — no short-circuit on format
+}
+
+// negative: email not in DB → ErrUnauthorized
 func TestLogin_UserNotFound(t *testing.T) {
 	repo := new(mockStaffRepo)
 	repo.On("FindByEmail", "ghost@example.com").Return(nil, nil)
@@ -117,6 +132,7 @@ func TestLogin_UserNotFound(t *testing.T) {
 	assert.ErrorIs(t, err, domain.ErrUnauthorized)
 }
 
+// negative: wrong password → ErrUnauthorized
 func TestLogin_WrongPassword(t *testing.T) {
 	repo := new(mockStaffRepo)
 	repo.On("FindByEmail", "user@example.com").Return(&domain.Staff{
@@ -128,6 +144,7 @@ func TestLogin_WrongPassword(t *testing.T) {
 	assert.ErrorIs(t, err, domain.ErrUnauthorized)
 }
 
+// negative: repository returns DB error → propagated as-is
 func TestLogin_DBError(t *testing.T) {
 	repo := new(mockStaffRepo)
 	repo.On("FindByEmail", "user@example.com").Return(nil, assert.AnError)
@@ -137,8 +154,9 @@ func TestLogin_DBError(t *testing.T) {
 	assert.NotErrorIs(t, err, domain.ErrUnauthorized)
 }
 
-// ── CreateStaff ───────────────────────────────────────────────────────────────
+// ! ── CreateStaff ───────────────────────────────────────────────────────────────
 
+// positive: new staff created, token returned
 func TestCreateStaff_Success(t *testing.T) {
 	repo := new(mockStaffRepo)
 	repo.On("FindByEmail", "new@example.com").Return(nil, nil)
@@ -155,6 +173,7 @@ func TestCreateStaff_Success(t *testing.T) {
 	repo.AssertExpectations(t)
 }
 
+// negative: any field empty → ErrInvalidInput
 func TestCreateStaff_EmptyFields(t *testing.T) {
 	svc := newService(new(mockStaffRepo))
 
@@ -168,12 +187,14 @@ func TestCreateStaff_EmptyFields(t *testing.T) {
 	assert.ErrorIs(t, err, domain.ErrInvalidInput)
 }
 
+// negative: malformed email → ErrInvalidInput
 func TestCreateStaff_InvalidEmail(t *testing.T) {
 	svc := newService(new(mockStaffRepo))
 	_, err := svc.CreateStaff("not-an-email", "Pass1!xx", "Bangkok Hospital")
 	assert.ErrorIs(t, err, domain.ErrInvalidInput)
 }
 
+// negative: password fails strength check → ErrInvalidInput
 func TestCreateStaff_WeakPassword(t *testing.T) {
 	svc := newService(new(mockStaffRepo))
 
@@ -190,6 +211,7 @@ func TestCreateStaff_WeakPassword(t *testing.T) {
 	}
 }
 
+// negative: email already registered → ErrStaffExists
 func TestCreateStaff_AlreadyExists(t *testing.T) {
 	repo := new(mockStaffRepo)
 	repo.On("FindByEmail", "dup@example.com").Return(&domain.Staff{
@@ -200,6 +222,7 @@ func TestCreateStaff_AlreadyExists(t *testing.T) {
 	assert.ErrorIs(t, err, domain.ErrStaffExists)
 }
 
+// negative: hospital not in DB → ErrHospitalNotFound
 func TestCreateStaff_HospitalNotFound(t *testing.T) {
 	repo := new(mockStaffRepo)
 	repo.On("FindByEmail", "user@example.com").Return(nil, nil)
@@ -209,6 +232,40 @@ func TestCreateStaff_HospitalNotFound(t *testing.T) {
 	assert.ErrorIs(t, err, domain.ErrHospitalNotFound)
 }
 
+// negative: DB error during duplicate email check → propagated as-is
+func TestCreateStaff_FindByEmailDBError(t *testing.T) {
+	repo := new(mockStaffRepo)
+	repo.On("FindByEmail", "user@example.com").Return(nil, assert.AnError)
+
+	_, err := newService(repo).CreateStaff("user@example.com", "Pass1!xx", "Bangkok Hospital")
+	assert.Error(t, err)
+}
+
+// negative: DB error during hospital lookup → propagated as-is
+func TestCreateStaff_FindHospitalDBError(t *testing.T) {
+	repo := new(mockStaffRepo)
+	repo.On("FindByEmail", "user@example.com").Return(nil, nil)
+	repo.On("FindHospitalByName", "Bangkok Hospital").Return(nil, assert.AnError)
+
+	_, err := newService(repo).CreateStaff("user@example.com", "Pass1!xx", "Bangkok Hospital")
+	assert.Error(t, err)
+}
+
+// negative: password > 72 bytes passes strength check but bcrypt rejects it → error
+func TestCreateStaff_PasswordTooLong(t *testing.T) {
+	repo := new(mockStaffRepo)
+	repo.On("FindByEmail", "user@example.com").Return(nil, nil)
+	repo.On("FindHospitalByName", "Bangkok Hospital").Return(&domain.Hospital{
+		ID: "BKH01", Name: "Bangkok Hospital",
+	}, nil)
+
+	// 73-byte password: passes isStrongPassword but bcrypt rejects it
+	longPassword := "Pass1!" + strings.Repeat("a", 67)
+	_, err := newService(repo).CreateStaff("user@example.com", longPassword, "Bangkok Hospital")
+	assert.Error(t, err)
+}
+
+// negative: DB error during staff creation → propagated as-is
 func TestCreateStaff_DBCreateError(t *testing.T) {
 	repo := new(mockStaffRepo)
 	repo.On("FindByEmail", "user@example.com").Return(nil, nil)
@@ -223,6 +280,7 @@ func TestCreateStaff_DBCreateError(t *testing.T) {
 
 // ── Logout ────────────────────────────────────────────────────────────────────
 
+// positive: token blacklisted in DB and in-memory cache
 func TestLogout_PersistsToDBAndMemory(t *testing.T) {
 	repo := new(mockStaffRepo)
 	token := makeSignedToken("user@example.com", "BKH01", "Bangkok Hospital")
@@ -236,6 +294,7 @@ func TestLogout_PersistsToDBAndMemory(t *testing.T) {
 	repo.AssertExpectations(t)
 }
 
+// negative (edge): unparseable token string → falls back to 24h expiry, still succeeds
 func TestLogout_InvalidTokenFallsBackTo24h(t *testing.T) {
 	repo := new(mockStaffRepo)
 	// Can't parse expiry from "badtoken" — service should fall back to 24h default
@@ -248,6 +307,27 @@ func TestLogout_InvalidTokenFallsBackTo24h(t *testing.T) {
 	repo.AssertExpectations(t)
 }
 
+// negative (edge): valid JWT without exp claim → falls back to 24h expiry, still succeeds
+func TestLogout_TokenWithNoExpiryClaim(t *testing.T) {
+	repo := new(mockStaffRepo)
+
+	// Valid JWT signed with correct secret but no exp claim → claims.ExpiresAt == nil (line 193)
+	type noExpClaims struct {
+		Login string `json:"login"`
+		jwt.RegisteredClaims
+	}
+	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, noExpClaims{Login: "user@example.com"})
+	tokenString, _ := tok.SignedString([]byte(testSecret))
+
+	// tokenExpiry returns "invalid claims" → Logout falls back to 24h default
+	repo.On("AddBlacklistedToken", tokenString, mock.AnythingOfType("time.Time")).Return(nil)
+
+	err := newService(repo).Logout(tokenString)
+	assert.NoError(t, err)
+	repo.AssertExpectations(t)
+}
+
+// negative: DB error when blacklisting token → error returned
 func TestLogout_DBError(t *testing.T) {
 	repo := new(mockStaffRepo)
 	token := makeSignedToken("user@example.com", "BKH01", "Bangkok Hospital")
@@ -259,6 +339,7 @@ func TestLogout_DBError(t *testing.T) {
 
 // ── IsTokenBlacklisted ────────────────────────────────────────────────────────
 
+// positive: freshly created service has empty blacklist → always false
 func TestIsTokenBlacklisted_FalseInitially(t *testing.T) {
 	svc := newService(new(mockStaffRepo))
 	assert.False(t, svc.IsTokenBlacklisted("some-token"))
@@ -266,6 +347,7 @@ func TestIsTokenBlacklisted_FalseInitially(t *testing.T) {
 
 // ── LoadBlacklist ─────────────────────────────────────────────────────────────
 
+// positive: DB tokens loaded into in-memory blacklist on startup
 func TestLoadBlacklist_LoadsTokensIntoMemory(t *testing.T) {
 	repo := new(mockStaffRepo)
 	repo.On("LoadBlacklistedTokens").Return([]string{"tok1", "tok2"}, nil)
@@ -280,6 +362,7 @@ func TestLoadBlacklist_LoadsTokensIntoMemory(t *testing.T) {
 	repo.AssertExpectations(t)
 }
 
+// negative: DB error during load → error returned
 func TestLoadBlacklist_DBError(t *testing.T) {
 	repo := new(mockStaffRepo)
 	repo.On("LoadBlacklistedTokens").Return(nil, assert.AnError)

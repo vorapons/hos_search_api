@@ -51,8 +51,8 @@ func performReq(r *gin.Engine, req *http.Request) *httptest.ResponseRecorder {
 	return w
 }
 
-// makePatientToken generates a JWT with hospital_id set to hospitalID.
-func makePatientToken(hospitalID string) string {
+// makeStaffToken generates a staff JWT with the given hospital_id for authenticating patient endpoints.
+func makeStaffToken(hospitalID string) string {
 	type claims struct {
 		Login      string `json:"login"`
 		HospitalID string `json:"hospital_id"`
@@ -75,13 +75,14 @@ func makePatientToken(hospitalID string) string {
 
 func strPtr(s string) *string { return &s }
 
-// ── GET /patient/search/:id ───────────────────────────────────────────────────
+// !── GET /patient/search/:id ───────────────────────────────────────────────────
 
+// positive: patient found by national ID → 200 with patient data
 func TestGetByID_FoundByNationalID(t *testing.T) {
 	staffSvc   := new(mockStaffService)
 	patientSvc := new(mockPatientService)
 
-	tok := makePatientToken("BKH01")
+	tok := makeStaffToken("BKH01")
 	staffSvc.On("IsTokenBlacklisted", tok).Return(false)
 	patientSvc.On("GetPatientByID", "1234567890123", "BKH01").
 		Return(&domain.Patient{ID: "uuid-1", NationalID: strPtr("1234567890123")}, nil)
@@ -98,11 +99,34 @@ func TestGetByID_FoundByNationalID(t *testing.T) {
 	patientSvc.AssertExpectations(t)
 }
 
+// positive: patient found by passport ID → 200 with patient data
+func TestGetByID_FoundByPassportID(t *testing.T) {
+	staffSvc   := new(mockStaffService)
+	patientSvc := new(mockPatientService)
+
+	tok := makeStaffToken("BKH01")
+	staffSvc.On("IsTokenBlacklisted", tok).Return(false)
+	patientSvc.On("GetPatientByID", "AB123456", "BKH01").
+		Return(&domain.Patient{ID: "uuid-2", PassportID: strPtr("AB123456")}, nil)
+
+	req, _ := http.NewRequest(http.MethodGet, "/patient/search/AB123456", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+
+	w := performReq(setupPatientRouter(staffSvc, patientSvc), req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var body map[string]any
+	json.NewDecoder(w.Body).Decode(&body)
+	assert.Equal(t, "AB123456", body["passport_id"])
+	patientSvc.AssertExpectations(t)
+}
+
+// negative: patient does not exist → 404 NOT_FOUND
 func TestGetByID_NotFound(t *testing.T) {
 	staffSvc   := new(mockStaffService)
 	patientSvc := new(mockPatientService)
 
-	tok := makePatientToken("BKH01")
+	tok := makeStaffToken("BKH01")
 	staffSvc.On("IsTokenBlacklisted", tok).Return(false)
 	patientSvc.On("GetPatientByID", "unknown", "BKH01").Return(nil, domain.ErrNotFound)
 
@@ -117,6 +141,7 @@ func TestGetByID_NotFound(t *testing.T) {
 	assert.Equal(t, "NOT_FOUND", body["code"])
 }
 
+// negative: missing Authorization header → 401 Unauthorized
 func TestGetByID_NoAuthHeader(t *testing.T) {
 	staffSvc   := new(mockStaffService)
 	patientSvc := new(mockPatientService)
@@ -127,11 +152,32 @@ func TestGetByID_NoAuthHeader(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
+// negative: service rejects empty/invalid ID → 400 INVALID_INPUT
+func TestGetByID_InvalidInput(t *testing.T) {
+	staffSvc   := new(mockStaffService)
+	patientSvc := new(mockPatientService)
+
+	tok := makeStaffToken("BKH01")
+	staffSvc.On("IsTokenBlacklisted", tok).Return(false)
+	patientSvc.On("GetPatientByID", "1234567890123", "BKH01").Return(nil, domain.ErrInvalidInput)
+
+	req, _ := http.NewRequest(http.MethodGet, "/patient/search/1234567890123", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+
+	w := performReq(setupPatientRouter(staffSvc, patientSvc), req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	var body map[string]string
+	json.NewDecoder(w.Body).Decode(&body)
+	assert.Equal(t, "INVALID_INPUT", body["code"])
+}
+
+// negative: unexpected service error → 500 INTERNAL_ERROR
 func TestGetByID_InternalError(t *testing.T) {
 	staffSvc   := new(mockStaffService)
 	patientSvc := new(mockPatientService)
 
-	tok := makePatientToken("BKH01")
+	tok := makeStaffToken("BKH01")
 	staffSvc.On("IsTokenBlacklisted", tok).Return(false)
 	patientSvc.On("GetPatientByID", "1234567890123", "BKH01").Return(nil, assert.AnError)
 
@@ -142,17 +188,37 @@ func TestGetByID_InternalError(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
-// ── POST /patient/search ──────────────────────────────────────────────────────
+// ! ── POST /patient/search ──────────────────────────────────────────────────────
 
+// positive: search returns mixed patients → 200 with list; verifies Thai names+national_id and foreign passport_id are serialised correctly
 func TestSearch_Success(t *testing.T) {
 	staffSvc   := new(mockStaffService)
 	patientSvc := new(mockPatientService)
 
-	tok := makePatientToken("BKH01")
+	tok := makeStaffToken("BKH01")
 	staffSvc.On("IsTokenBlacklisted", tok).Return(false)
 
-	input   := domain.PatientSearchInput{LastName: strPtr("Smith")}
-	patients := []domain.Patient{{ID: "uuid-1"}, {ID: "uuid-2"}}
+	dob1 := time.Date(1985, 3, 15, 0, 0, 0, 0, time.UTC) // Somchai
+	dob2 := time.Date(1990, 3, 14, 0, 0, 0, 0, time.UTC) // Yuki Tanaka
+
+	input := domain.PatientSearchInput{LastName: strPtr("Smith")}
+	patients := []domain.Patient{
+		// Thai — Somchai Jaidee (BKH-0001): has Thai names + national_id, no passport
+		{
+			FirstNameTH: strPtr("สมชาย"),  LastNameTH:  strPtr("ใจดี"),
+			FirstNameEN: strPtr("Somchai"), LastNameEN:  strPtr("Jaidee"),
+			NationalID:  strPtr("1100100012341"), PatientHN: strPtr("BKH-0001"),
+			DateOfBirth: &dob1, Gender: strPtr("male"),
+			PhoneNumber: strPtr("0812345001"), Email: strPtr("somchai.j@email.com"),
+		},
+		// Japanese — Yuki Tanaka (BKH-0005): no Thai names, passport only
+		{
+			FirstNameEN: strPtr("Yuki"),    LastNameEN:  strPtr("Tanaka"),
+			PassportID:  strPtr("JP10234567"), PatientHN: strPtr("BKH-0005"),
+			DateOfBirth: &dob2, Gender: strPtr("female"),
+			PhoneNumber: strPtr("+819011112001"), Email: strPtr("yuki.tanaka@email.jp"),
+		},
+	}
 	patientSvc.On("GetPatientByCondition", input, "BKH01").Return(patients, nil)
 
 	req, _ := http.NewRequest(http.MethodPost, "/patient/search",
@@ -166,14 +232,34 @@ func TestSearch_Success(t *testing.T) {
 	var body []map[string]any
 	json.NewDecoder(w.Body).Decode(&body)
 	assert.Len(t, body, 2)
+
+	// Thai patient: Thai name fields and national_id present; passport_id absent
+	assert.Equal(t, "สมชาย",          body[0]["first_name_th"])
+	assert.Equal(t, "ใจดี",           body[0]["last_name_th"])
+	assert.Equal(t, "Somchai",        body[0]["first_name_en"])
+	assert.Equal(t, "1100100012341",  body[0]["national_id"])
+	assert.Nil(t,                     body[0]["passport_id"])
+	assert.Equal(t, "BKH-0001",       body[0]["patient_hn"])
+	assert.Equal(t, "male",           body[0]["gender"])
+
+	// Foreign patient: no Thai name fields; passport_id present; national_id absent
+	assert.Nil(t,                     body[1]["first_name_th"])
+	assert.Nil(t,                     body[1]["last_name_th"])
+	assert.Equal(t, "Yuki",           body[1]["first_name_en"])
+	assert.Equal(t, "JP10234567",     body[1]["passport_id"])
+	assert.Nil(t,                     body[1]["national_id"])
+	assert.Equal(t, "BKH-0005",       body[1]["patient_hn"])
+	assert.Equal(t, "female",         body[1]["gender"])
+
 	patientSvc.AssertExpectations(t)
 }
 
+// positive: valid condition, no patients matched → 200 with empty list
 func TestSearch_EmptyResult(t *testing.T) {
 	staffSvc   := new(mockStaffService)
 	patientSvc := new(mockPatientService)
 
-	tok := makePatientToken("BKH01")
+	tok := makeStaffToken("BKH01")
 	staffSvc.On("IsTokenBlacklisted", tok).Return(false)
 
 	input := domain.PatientSearchInput{FirstName: strPtr("NoOne")}
@@ -192,11 +278,12 @@ func TestSearch_EmptyResult(t *testing.T) {
 	assert.Empty(t, body)
 }
 
+// negative: no search condition provided → 400 INVALID_INPUT
 func TestSearch_NoCondition(t *testing.T) {
 	staffSvc   := new(mockStaffService)
 	patientSvc := new(mockPatientService)
 
-	tok := makePatientToken("BKH01")
+	tok := makeStaffToken("BKH01")
 	staffSvc.On("IsTokenBlacklisted", tok).Return(false)
 	patientSvc.On("GetPatientByCondition", domain.PatientSearchInput{}, "BKH01").
 		Return(nil, domain.ErrInvalidInput)
@@ -214,11 +301,12 @@ func TestSearch_NoCondition(t *testing.T) {
 	assert.Equal(t, "INVALID_INPUT", body["code"])
 }
 
+// negative: request body is not a JSON object → 400
 func TestSearch_BadBody(t *testing.T) {
 	staffSvc   := new(mockStaffService)
 	patientSvc := new(mockPatientService)
 
-	tok := makePatientToken("BKH01")
+	tok := makeStaffToken("BKH01")
 	staffSvc.On("IsTokenBlacklisted", tok).Return(false)
 
 	req, _ := http.NewRequest(http.MethodPost, "/patient/search",
@@ -231,6 +319,7 @@ func TestSearch_BadBody(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+// negative: missing Authorization header → 401 Unauthorized
 func TestSearch_NoAuthHeader(t *testing.T) {
 	staffSvc   := new(mockStaffService)
 	patientSvc := new(mockPatientService)
@@ -243,11 +332,12 @@ func TestSearch_NoAuthHeader(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
+// negative: unexpected service error → 500 INTERNAL_ERROR
 func TestSearch_InternalError(t *testing.T) {
 	staffSvc   := new(mockStaffService)
 	patientSvc := new(mockPatientService)
 
-	tok := makePatientToken("BKH01")
+	tok := makeStaffToken("BKH01")
 	staffSvc.On("IsTokenBlacklisted", tok).Return(false)
 	patientSvc.On("GetPatientByCondition", mock.Anything, "BKH01").Return(nil, assert.AnError)
 
