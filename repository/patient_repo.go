@@ -31,11 +31,22 @@ func (r *patientRepository) FindByID(id string, hospitalID string) (*domain.Pati
 	return toPatient(&m), nil
 }
 
-// FindByCondition returns all patients in the given hospital that match all provided fields.
-// All text fields use case-insensitive contains matching (ILIKE '%value%').
+// allowedOrderBy maps safe client-facing field names to actual DB columns.
+var allowedOrderBy = map[string]string{
+	"first_name_th": "first_name_th",
+	"last_name_th":  "last_name_th",
+	"first_name_en": "first_name_en",
+	"last_name_en":  "last_name_en",
+	"date_of_birth": "date_of_birth",
+	"patient_hn":    "patient_hn",
+}
+
+// FindByCondition returns a paginated, ordered page of patients in the given hospital
+// that match all provided fields. All text fields use case-insensitive contains matching.
 // DateOfBirth is an exact match.
-func (r *patientRepository) FindByCondition(input domain.PatientSearchInput, hospitalID string) ([]domain.Patient, error) {
-	q := r.db.Where("hospital_id = ?", hospitalID)
+// input.Page, input.PageSize, input.OrderBy, input.OrderDir must already be normalised by the service.
+func (r *patientRepository) FindByCondition(input domain.PatientSearchInput, hospitalID string) ([]domain.Patient, int64, error) {
+	q := r.db.Model(&PatientModel{}).Where("hospital_id = ?", hospitalID)
 
 	if input.NationalID != nil {
 		q = q.Where("national_id ILIKE ?", "%"+*input.NationalID+"%")
@@ -65,16 +76,32 @@ func (r *patientRepository) FindByCondition(input domain.PatientSearchInput, hos
 		q = q.Where("email ILIKE ?", "%"+*input.Email+"%")
 	}
 
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	col, ok := allowedOrderBy[input.OrderBy]
+	if !ok {
+		col = "last_name_th"
+	}
+	dir := "ASC"
+	if input.OrderDir == "desc" {
+		dir = "DESC"
+	}
+
+	offset := (input.Page - 1) * input.PageSize
+
 	var models []PatientModel
-	if err := q.Find(&models).Error; err != nil {
-		return nil, err
+	if err := q.Order(col + " " + dir).Limit(input.PageSize).Offset(offset).Find(&models).Error; err != nil {
+		return nil, 0, err
 	}
 
 	patients := make([]domain.Patient, len(models))
 	for i, m := range models {
 		patients[i] = *toPatient(&m)
 	}
-	return patients, nil
+	return patients, total, nil
 }
 
 func toPatient(m *PatientModel) *domain.Patient {

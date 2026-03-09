@@ -20,7 +20,7 @@
 
 > ✅ `.env` is ready — ✅`Secret Key` is built in source, no setup needed.
 
-```bash
+```ba
 # 1. Clone project from GitHub
 git clone https://github.com/vorapons/hos_search_api.git
 

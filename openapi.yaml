@@ -13,10 +13,11 @@ info:
   version: 1.0.0
 
 servers:
-  - url: http://localhost:3456
-    description: Local development server
   - url: https://hossearchapi-1071770156665.asia-southeast3.run.app
     description: Production server
+  - url: http://localhost:3456
+    description: Local development server
+  
   
 
 tags:
@@ -88,7 +89,18 @@ paths:
       description: |-
         🔐 Returns patients belonging to the same hospital as the authenticated staff member.
         At least one search field must be provided. All provided fields are combined with AND logic.
-        Returns an empty array when no patients match — never 404.
+        Returns an empty data array when no patients match — never 404.
+
+        **Pagination:**
+        - `page` — page number, 1-based. Default: `1`
+        - `page_size` — results per page. Default: `20`, max: `100` (server enforces cap)
+
+        **Ordering:**
+        - `order_by` — field to sort by. Default: `last_name_th`
+          Allowed values: `first_name_th`, `last_name_th`, `first_name_en`, `last_name_en`, `date_of_birth`, `patient_hn`
+        - `order_dir` — sort direction. Default: `asc`. Allowed values: `asc`, `desc`
+
+        All pagination/ordering fields are optional. If omitted, server applies defaults automatically.
       operationId: searchPatients
       security:
         - bearerAuth: []
@@ -118,42 +130,64 @@ paths:
                   first_name: "Somchai"
                   last_name: "Jaidee"
                   date_of_birth: "1985-03-15"
+              withPagination:
+                summary: Search with pagination (page 2, 10 per page)
+                value:
+                  last_name: "Smith"
+                  page: 2
+                  page_size: 10
+              withOrdering:
+                summary: Search ordered by date of birth descending
+                value:
+                  first_name: "John"
+                  order_by: "date_of_birth"
+                  order_dir: "desc"
+              withFullPagination:
+                summary: Search with all pagination options
+                value:
+                  last_name: "Jaidee"
+                  page: 1
+                  page_size: 5
+                  order_by: "last_name_th"
+                  order_dir: "asc"
       responses:
         '200':
-          description: Successful — returns matching patients (empty array if none found)
+          description: Successful — returns paginated matching patients (empty data array if none found)
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/PatientDetail'
+                $ref: '#/components/schemas/PatientSearchResult'
               example:
-                - first_name_th: "สมชาย"
-                  middle_name_th: null
-                  last_name_th: "ใจดี"
-                  first_name_en: "Somchai"
-                  middle_name_en: null
-                  last_name_en: "Jaidee"
-                  date_of_birth: "1985-03-15T00:00:00Z"
-                  patient_hn: "BKH-0001"
-                  national_id: "1100100012341"
-                  passport_id: null
-                  phone_number: "0812345001"
-                  email: "somchai.j@email.com"
-                  gender: "male"
-                - first_name_th: null
-                  middle_name_th: null
-                  last_name_th: null
-                  first_name_en: "Yuki"
-                  middle_name_en: null
-                  last_name_en: "Tanaka"
-                  date_of_birth: "1990-03-14T00:00:00Z"
-                  patient_hn: "BKH-0005"
-                  national_id: null
-                  passport_id: "JP10234567"
-                  phone_number: "+819011112001"
-                  email: "yuki.tanaka@email.jp"
-                  gender: "female"
+                total: 2
+                page: 1
+                page_size: 20
+                data:
+                  - first_name_th: "สมชาย"
+                    middle_name_th: null
+                    last_name_th: "ใจดี"
+                    first_name_en: "Somchai"
+                    middle_name_en: null
+                    last_name_en: "Jaidee"
+                    date_of_birth: "1985-03-15T00:00:00Z"
+                    patient_hn: "BKH-0001"
+                    national_id: "1100100012341"
+                    passport_id: null
+                    phone_number: "0812345001"
+                    email: "somchai.j@email.com"
+                    gender: "male"
+                  - first_name_th: null
+                    middle_name_th: null
+                    last_name_th: null
+                    first_name_en: "Yuki"
+                    middle_name_en: null
+                    last_name_en: "Tanaka"
+                    date_of_birth: "1990-03-14T00:00:00Z"
+                    patient_hn: "BKH-0005"
+                    national_id: null
+                    passport_id: "JP10234567"
+                    phone_number: "+819011112001"
+                    email: "yuki.tanaka@email.jp"
+                    gender: "female"
         '400':
           description: Bad request — no search fields provided or field format is invalid
           content:
@@ -587,7 +621,7 @@ components:
 
     PatientSearchRequest:
       type: object
-      description: Search criteria. At least one field must be provided. Fields are combined with AND logic. Text fields support partial (contains) matching.
+      description: Search criteria + optional pagination. At least one search field must be provided. Fields are combined with AND logic. Text fields support partial (contains) matching.
       properties:
         national_id:
           type: string
@@ -623,6 +657,31 @@ components:
           format: email
           description: Email address (partial match supported)
           example: "somchai.j@email.com"
+        page:
+          type: integer
+          description: Page number (1-based). Defaults to 1.
+          default: 1
+          minimum: 1
+          example: 1
+        page_size:
+          type: integer
+          description: Number of results per page. Defaults to 20, max 100.
+          default: 20
+          minimum: 1
+          maximum: 100
+          example: 20
+        order_by:
+          type: string
+          description: Field to sort by. Defaults to last_name_th.
+          default: "last_name_th"
+          enum: [first_name_th, last_name_th, first_name_en, last_name_en, date_of_birth, patient_hn]
+          example: "last_name_th"
+        order_dir:
+          type: string
+          description: Sort direction. Defaults to asc.
+          default: "asc"
+          enum: [asc, desc]
+          example: "asc"
 
     StaffLoginRequest:
       type: object
@@ -732,6 +791,29 @@ components:
           nullable: true
           enum: [male, female, other]
           example: "male"
+
+    PatientSearchResult:
+      type: object
+      description: Paginated search result wrapper
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PatientDetail'
+          description: Array of matching patients for the current page
+        total:
+          type: integer
+          format: int64
+          description: Total number of matching patients across all pages
+          example: 150
+        page:
+          type: integer
+          description: Current page number
+          example: 1
+        page_size:
+          type: integer
+          description: Number of results per page
+          example: 20
 
     TokenResponse:
       type: object

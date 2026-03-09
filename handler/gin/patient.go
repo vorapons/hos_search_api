@@ -63,7 +63,7 @@ func (h *PatientHandler) Search(c *gin.Context) {
 	hospitalIDRaw, _ := c.Get("hospital_id")
 	hospitalID, _ := hospitalIDRaw.(string)
 
-	patients, err := h.service.GetPatientByCondition(input, hospitalID)
+	result, err := h.service.GetPatientByCondition(input, hospitalID)
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrInvalidInput):
@@ -80,5 +80,5 @@ func (h *PatientHandler) Search(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, patients)
+	c.JSON(http.StatusOK, result)
 }

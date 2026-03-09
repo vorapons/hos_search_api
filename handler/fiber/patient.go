@@ -58,7 +58,7 @@ func (h *PatientHandler) Search(c *fiber.Ctx) error {
 
 	hospitalID, _ := c.Locals("hospital_id").(string)
 
-	patients, err := h.service.GetPatientByCondition(input, hospitalID)
+	result, err := h.service.GetPatientByCondition(input, hospitalID)
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrInvalidInput):
@@ -74,5 +74,5 @@ func (h *PatientHandler) Search(c *fiber.Ctx) error {
 		}
 	}
 
-	return c.JSON(patients)
+	return c.JSON(result)
 }

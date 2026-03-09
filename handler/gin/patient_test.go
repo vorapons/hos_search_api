@@ -28,10 +28,10 @@ func (m *mockPatientService) GetPatientByID(id, hospitalID string) (*domain.Pati
 	return patient, args.Error(1)
 }
 
-func (m *mockPatientService) GetPatientByCondition(input domain.PatientSearchInput, hospitalID string) ([]domain.Patient, error) {
+func (m *mockPatientService) GetPatientByCondition(input domain.PatientSearchInput, hospitalID string) (domain.PatientSearchResult, error) {
 	args := m.Called(input, hospitalID)
-	patients, _ := args.Get(0).([]domain.Patient)
-	return patients, args.Error(1)
+	result, _ := args.Get(0).(domain.PatientSearchResult)
+	return result, args.Error(1)
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -190,7 +190,7 @@ func TestGetByID_InternalError(t *testing.T) {
 
 // ! ── POST /patient/search ──────────────────────────────────────────────────────
 
-// positive: search returns mixed patients → 200 with list; verifies Thai names+national_id and foreign passport_id are serialised correctly
+// positive: search returns mixed patients → 200 with paginated result; verifies Thai names+national_id and foreign passport_id are serialised correctly
 func TestSearch_Success(t *testing.T) {
 	staffSvc   := new(mockStaffService)
 	patientSvc := new(mockPatientService)
@@ -202,24 +202,27 @@ func TestSearch_Success(t *testing.T) {
 	dob2 := time.Date(1990, 3, 14, 0, 0, 0, 0, time.UTC) // Yuki Tanaka
 
 	input := domain.PatientSearchInput{LastName: strPtr("Smith")}
-	patients := []domain.Patient{
-		// Thai — Somchai Jaidee (BKH-0001): has Thai names + national_id, no passport
-		{
-			FirstNameTH: strPtr("สมชาย"),  LastNameTH:  strPtr("ใจดี"),
-			FirstNameEN: strPtr("Somchai"), LastNameEN:  strPtr("Jaidee"),
-			NationalID:  strPtr("1100100012341"), PatientHN: strPtr("BKH-0001"),
-			DateOfBirth: &dob1, Gender: strPtr("male"),
-			PhoneNumber: strPtr("0812345001"), Email: strPtr("somchai.j@email.com"),
+	searchResult := domain.PatientSearchResult{
+		Data: []domain.Patient{
+			// Thai — Somchai Jaidee (BKH-0001): has Thai names + national_id, no passport
+			{
+				FirstNameTH: strPtr("สมชาย"),  LastNameTH:  strPtr("ใจดี"),
+				FirstNameEN: strPtr("Somchai"), LastNameEN:  strPtr("Jaidee"),
+				NationalID:  strPtr("1100100012341"), PatientHN: strPtr("BKH-0001"),
+				DateOfBirth: &dob1, Gender: strPtr("male"),
+				PhoneNumber: strPtr("0812345001"), Email: strPtr("somchai.j@email.com"),
+			},
+			// Japanese — Yuki Tanaka (BKH-0005): no Thai names, passport only
+			{
+				FirstNameEN: strPtr("Yuki"),    LastNameEN:  strPtr("Tanaka"),
+				PassportID:  strPtr("JP10234567"), PatientHN: strPtr("BKH-0005"),
+				DateOfBirth: &dob2, Gender: strPtr("female"),
+				PhoneNumber: strPtr("+819011112001"), Email: strPtr("yuki.tanaka@email.jp"),
+			},
 		},
-		// Japanese — Yuki Tanaka (BKH-0005): no Thai names, passport only
-		{
-			FirstNameEN: strPtr("Yuki"),    LastNameEN:  strPtr("Tanaka"),
-			PassportID:  strPtr("JP10234567"), PatientHN: strPtr("BKH-0005"),
-			DateOfBirth: &dob2, Gender: strPtr("female"),
-			PhoneNumber: strPtr("+819011112001"), Email: strPtr("yuki.tanaka@email.jp"),
-		},
+		Total: 2, Page: 1, PageSize: 20,
 	}
-	patientSvc.On("GetPatientByCondition", input, "BKH01").Return(patients, nil)
+	patientSvc.On("GetPatientByCondition", input, "BKH01").Return(searchResult, nil)
 
 	req, _ := http.NewRequest(http.MethodPost, "/patient/search",
 		jsonBody(map[string]string{"last_name": "Smith"}))
@@ -229,32 +232,38 @@ func TestSearch_Success(t *testing.T) {
 	w := performReq(setupPatientRouter(staffSvc, patientSvc), req)
 	assert.Equal(t, http.StatusOK, w.Code)
 
-	var body []map[string]any
+	var body map[string]any
 	json.NewDecoder(w.Body).Decode(&body)
-	assert.Len(t, body, 2)
 
-	// Thai patient: Thai name fields and national_id present; passport_id absent
-	assert.Equal(t, "สมชาย",          body[0]["first_name_th"])
-	assert.Equal(t, "ใจดี",           body[0]["last_name_th"])
-	assert.Equal(t, "Somchai",        body[0]["first_name_en"])
-	assert.Equal(t, "1100100012341",  body[0]["national_id"])
-	assert.Nil(t,                     body[0]["passport_id"])
-	assert.Equal(t, "BKH-0001",       body[0]["patient_hn"])
-	assert.Equal(t, "male",           body[0]["gender"])
+	assert.Equal(t, float64(2), body["total"])
+	assert.Equal(t, float64(1), body["page"])
+	assert.Equal(t, float64(20), body["page_size"])
 
-	// Foreign patient: no Thai name fields; passport_id present; national_id absent
-	assert.Nil(t,                     body[1]["first_name_th"])
-	assert.Nil(t,                     body[1]["last_name_th"])
-	assert.Equal(t, "Yuki",           body[1]["first_name_en"])
-	assert.Equal(t, "JP10234567",     body[1]["passport_id"])
-	assert.Nil(t,                     body[1]["national_id"])
-	assert.Equal(t, "BKH-0005",       body[1]["patient_hn"])
-	assert.Equal(t, "female",         body[1]["gender"])
+	data, _ := body["data"].([]any)
+	assert.Len(t, data, 2)
+
+	p0 := data[0].(map[string]any)
+	assert.Equal(t, "สมชาย",         p0["first_name_th"])
+	assert.Equal(t, "ใจดี",          p0["last_name_th"])
+	assert.Equal(t, "Somchai",       p0["first_name_en"])
+	assert.Equal(t, "1100100012341", p0["national_id"])
+	assert.Nil(t,                    p0["passport_id"])
+	assert.Equal(t, "BKH-0001",      p0["patient_hn"])
+	assert.Equal(t, "male",          p0["gender"])
+
+	p1 := data[1].(map[string]any)
+	assert.Nil(t,                    p1["first_name_th"])
+	assert.Nil(t,                    p1["last_name_th"])
+	assert.Equal(t, "Yuki",          p1["first_name_en"])
+	assert.Equal(t, "JP10234567",    p1["passport_id"])
+	assert.Nil(t,                    p1["national_id"])
+	assert.Equal(t, "BKH-0005",      p1["patient_hn"])
+	assert.Equal(t, "female",        p1["gender"])
 
 	patientSvc.AssertExpectations(t)
 }
 
-// positive: valid condition, no patients matched → 200 with empty list
+// positive: valid condition, no patients matched → 200 with empty data and total=0
 func TestSearch_EmptyResult(t *testing.T) {
 	staffSvc   := new(mockStaffService)
 	patientSvc := new(mockPatientService)
@@ -263,7 +272,8 @@ func TestSearch_EmptyResult(t *testing.T) {
 	staffSvc.On("IsTokenBlacklisted", tok).Return(false)
 
 	input := domain.PatientSearchInput{FirstName: strPtr("NoOne")}
-	patientSvc.On("GetPatientByCondition", input, "BKH01").Return([]domain.Patient{}, nil)
+	patientSvc.On("GetPatientByCondition", input, "BKH01").Return(
+		domain.PatientSearchResult{Data: []domain.Patient{}, Total: 0, Page: 1, PageSize: 20}, nil)
 
 	req, _ := http.NewRequest(http.MethodPost, "/patient/search",
 		jsonBody(map[string]string{"first_name": "NoOne"}))
@@ -273,9 +283,11 @@ func TestSearch_EmptyResult(t *testing.T) {
 	w := performReq(setupPatientRouter(staffSvc, patientSvc), req)
 	assert.Equal(t, http.StatusOK, w.Code)
 
-	var body []any
+	var body map[string]any
 	json.NewDecoder(w.Body).Decode(&body)
-	assert.Empty(t, body)
+	assert.Equal(t, float64(0), body["total"])
+	data, _ := body["data"].([]any)
+	assert.Empty(t, data)
 }
 
 // negative: no search condition provided → 400 INVALID_INPUT
@@ -286,7 +298,7 @@ func TestSearch_NoCondition(t *testing.T) {
 	tok := makeStaffToken("BKH01")
 	staffSvc.On("IsTokenBlacklisted", tok).Return(false)
 	patientSvc.On("GetPatientByCondition", domain.PatientSearchInput{}, "BKH01").
-		Return(nil, domain.ErrInvalidInput)
+		Return(domain.PatientSearchResult{}, domain.ErrInvalidInput)
 
 	req, _ := http.NewRequest(http.MethodPost, "/patient/search",
 		jsonBody(map[string]string{}))
@@ -339,7 +351,7 @@ func TestSearch_InternalError(t *testing.T) {
 
 	tok := makeStaffToken("BKH01")
 	staffSvc.On("IsTokenBlacklisted", tok).Return(false)
-	patientSvc.On("GetPatientByCondition", mock.Anything, "BKH01").Return(nil, assert.AnError)
+	patientSvc.On("GetPatientByCondition", mock.Anything, "BKH01").Return(domain.PatientSearchResult{}, assert.AnError)
 
 	req, _ := http.NewRequest(http.MethodPost, "/patient/search",
 		jsonBody(map[string]string{"last_name": "Smith"}))
