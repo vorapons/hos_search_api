@@ -452,7 +452,7 @@ func TestHello_BlacklistedToken(t *testing.T) {
 	assert.Equal(t, "UNAUTHORIZED", body["code"])
 }
 
-// ! ── GET /staff/logout ─────────────────────────────────────────────────────────
+// ! ── POST /staff/logout ────────────────────────────────────────────────────────
 
 // positive: valid token, logout succeeds → 200
 func TestLogout_Success(t *testing.T) {
@@ -461,7 +461,7 @@ func TestLogout_Success(t *testing.T) {
 	svc.On("IsTokenBlacklisted", token).Return(false)
 	svc.On("Logout", token).Return(nil)
 
-	req, _ := http.NewRequest(http.MethodGet, "/staff/logout", nil)
+	req, _ := http.NewRequest(http.MethodPost, "/staff/logout", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 
 	w := perform(setupRouter(svc), req)
@@ -476,7 +476,7 @@ func TestLogout_Success(t *testing.T) {
 // negative: missing Authorization header → 401 Unauthorized
 func TestLogout_NoAuthHeader(t *testing.T) {
 	svc := new(mockStaffService)
-	req, _ := http.NewRequest(http.MethodGet, "/staff/logout", nil)
+	req, _ := http.NewRequest(http.MethodPost, "/staff/logout", nil)
 
 	w := perform(setupRouter(svc), req)
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
@@ -489,7 +489,7 @@ func TestLogout_ServiceError(t *testing.T) {
 	svc.On("IsTokenBlacklisted", token).Return(false)
 	svc.On("Logout", token).Return(assert.AnError)
 
-	req, _ := http.NewRequest(http.MethodGet, "/staff/logout", nil)
+	req, _ := http.NewRequest(http.MethodPost, "/staff/logout", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 
 	w := perform(setupRouter(svc), req)

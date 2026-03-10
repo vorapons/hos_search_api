@@ -533,13 +533,14 @@ paths:
                 message: "An unexpected error occurred"
 
   /staff/logout:
-    get:
+    post:
       tags:
         - staff
       summary: Staff logout
       description: |-
         🔐 Invalidate the current JWT token / terminate the session.
         The token is added to a blacklist and persisted in the database.
+        POST is used (not GET) because this is a state mutation — it blacklists the token.
       operationId: staffLogout
       security:
         - bearerAuth: []

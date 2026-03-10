@@ -25,7 +25,7 @@ func SetupRoutes(r *gin.Engine, staff *StaffHandler, patient *PatientHandler, jw
 
 	// Staff — authenticated
 	r.GET("/staff/hello",  apiLimit, auth, staff.Hello)
-	r.GET("/staff/logout", apiLimit, auth, staff.Logout)
+	r.POST("/staff/logout", apiLimit, auth, staff.Logout)
 
 	// Patient — authenticated
 	r.POST("/patient/search",    apiLimit, auth, patient.Search)

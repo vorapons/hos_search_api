@@ -121,7 +121,7 @@ func (h *StaffHandler) Hello(c *gin.Context) {
 	})
 }
 
-// Logout handles GET /staff/logout
+// Logout handles POST /staff/logout
 func (h *StaffHandler) Logout(c *gin.Context) {
 	tokenRaw, _ := c.Get("token")
 	tokenString, _ := tokenRaw.(string)

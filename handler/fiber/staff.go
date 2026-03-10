@@ -114,7 +114,7 @@ func (h *StaffHandler) Hello(c *fiber.Ctx) error {
 	})
 }
 
-// Logout handles GET /staff/logout
+// Logout handles POST /staff/logout
 func (h *StaffHandler) Logout(c *fiber.Ctx) error {
 	tokenString, _ := c.Locals("token").(string)
 

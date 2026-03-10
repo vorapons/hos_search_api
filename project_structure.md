@@ -43,14 +43,14 @@ pt_search_hos/
 ├── handler/                        # 🔴 Driving adapters — HTTP handlers
 │   ├── fiber/                      # package fiberhandler
 │   │   ├── health.go               # GET /hello
-│   │   ├── staff.go                # POST /staff/login · /staff/create · GET /staff/hello · /staff/logout
+│   │   ├── staff.go                # POST /staff/login · /staff/create · GET /staff/hello · POST /staff/logout
 │   │   ├── patient.go              # GET /patient/search/:id · POST /patient/search
 │   │   ├── router.go               # SetupRoutes()
 │   │   ├── staff_test.go           # Handler tests — Staff (17 cases)
 │   │   └── patient_test.go         # Handler tests — Patient (12 cases)
 │   └── gin/                        # package ginhandler
 │       ├── health.go               # GET /hello
-│       ├── staff.go                # POST /staff/login · /staff/create · GET /staff/hello · /staff/logout
+│       ├── staff.go                # POST /staff/login · /staff/create · GET /staff/hello · POST /staff/logout
 │       ├── patient.go              # GET /patient/search/:id · POST /patient/search
 │       ├── router.go               # SetupRoutes()
 │       ├── staff_test.go           # Handler tests — Staff (17 cases)
@@ -177,7 +177,7 @@ erDiagram
 | `POST` | `/staff/login` | ❌ | Login → JWT |
 | `POST` | `/staff/create` | ❌ | Register staff → JWT |
 | `GET` | `/staff/hello` | ✅ JWT | Authenticated hello |
-| `GET` | `/staff/logout` | ✅ JWT | Blacklist token |
+| `POST` | `/staff/logout` | ✅ JWT | Blacklist token |
 | `GET` | `/patient/search/:id` | ✅ JWT | Search by national/passport ID |
 | `POST` | `/patient/search` | ✅ JWT | Search by condition (name, DOB …) |
 

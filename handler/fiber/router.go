@@ -20,7 +20,7 @@ func SetupRoutes(app *fiber.App, staff *StaffHandler, patient *PatientHandler, j
 
 	// Staff — authenticated
 	app.Get("/staff/hello",  apiLimit, auth, staff.Hello)
-	app.Get("/staff/logout", apiLimit, auth, staff.Logout)
+	app.Post("/staff/logout", apiLimit, auth, staff.Logout)
 
 	// Patient — authenticated
 	app.Post("/patient/search",    apiLimit, auth, patient.Search)
