@@ -13,7 +13,7 @@ info:
   version: 1.0.0
 
 servers:
-  - url: https://hossearchapi-1071770156665.asia-southeast3.run.app
+  - url: https://hossearchapi-904547945451.asia-southeast1.run.app
     description: Production server
   - url: http://localhost:3456
     description: Local development server

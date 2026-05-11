@@ -7,8 +7,8 @@
 
 | | Link |
 |---|---|
-| 🖥️ Live API | https://hossearchapi-1071770156665.asia-southeast3.run.app/|
-| 🖥️ Swagger | https://hossearchapi-1071770156665.asia-southeast3.run.app/swagger|
+| 🖥️ Live API | https://hossearchapi-904547945451.asia-southeast1.run.app/|
+| 🖥️ Swagger | https://hossearchapi-904547945451.asia-southeast1.run.app/swagger|
 | 📘 API Design | https://app.swaggerhub.com/apis/home-2de/hossearchapi/1.0.0 |
 | 🗄️ ER Diagram | https://dbdiagram.io/d/Hos_search_api-69a84dfda3f0aa31e1cf5819 |
 | 🏗️ Project Structure | [project_structure.md](project_structure.md) |
