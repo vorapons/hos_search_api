@@ -51,7 +51,7 @@ func main() {
 	// Gin
 	r := gin.New()
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"https://hossearchapi-1071770156665.asia-southeast3.run.app", "http://localhost:3456", "http://localhost:8080"},
+		AllowOrigins:     []string{"https://hossearchapi-904547945451.asia-southeast1.run.app", "http://localhost:3456", "http://localhost:8080"},
 		AllowMethods:     []string{"GET", "POST", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		AllowCredentials: true,
